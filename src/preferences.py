@@ -360,7 +360,7 @@ class PreferencesDialog(tk.Toplevel):
         ttk.Entry(repository, textvariable=self.sqlserver_database_var).grid(row=2, column=1, sticky="ew", pady=5)
         ttk.Label(
             repository,
-            text="SQLite es el repositorio productivo local de 2.3.4. Los campos SQL Server se conservan para preparar la migración 2.4.x.",
+            text="SQLite es el repositorio productivo local de 2.3.5. Los campos SQL Server se conservan para preparar la migración 2.4.x.",
             style="Muted.TLabel",
             wraplength=560,
             justify="left",

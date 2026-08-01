@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""Interfaz guiada de Minutas ASH 2.3.4.
+"""Interfaz guiada de Minutas ASH 2.3.5.
 
 La clase conserva los casos de uso estables de la línea 5.x, pero reorganiza
 la experiencia en cuatro pasos: reunión, participantes, revisión y emisión.

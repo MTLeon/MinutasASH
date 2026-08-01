@@ -1,5 +1,20 @@
 # Registro de cambios
 
+## [2.3.5] - 2026-07-31
+
+### Corregido
+- Ollama ya no se inicia durante la apertura de la interfaz; se inicia bajo demanda al procesar.
+- Las invocaciones del componente local se ejecutan sin ventana de consola en Windows.
+- Un bloqueo de inicio impide lanzar varias instancias simultáneas del servicio local.
+- Las respuestas JSON truncadas amplían automáticamente el límite de salida.
+- Si el JSON sigue incompleto, el bloque se divide y conserva los bloques previamente guardados.
+- El perfil automático no asciende desde Rápido durante la misma ejecución después del warmup.
+
+### Mejorado
+- Límites predeterminados de salida: 1400 tokens por bloque, 1800 en consolidación y 1000 en recuperación.
+- Mensajes de actividad diferenciados para timeout y salida estructurada incompleta.
+- Pruebas de regresión para consola oculta, arranque bajo demanda, retry dinámico y división por JSON truncado.
+
 ## [2.3.4] - 2026-07-31
 
 ### Preparación de repositorio GitHub

@@ -31,7 +31,7 @@ if ($LASTEXITCODE -ne 0) { throw "No fue posible preparar los archivos." }
 
 $changes = git status --porcelain
 if ($changes) {
-    git commit -m "chore: línea base MinutasASH 2.3.4"
+    git commit -m "chore: línea base MinutasASH 2.3.5"
     if ($LASTEXITCODE -ne 0) {
         throw "No fue posible crear el commit. Verifique git config user.name y user.email."
     }

@@ -22,7 +22,7 @@ from src.minute_generator import (
     analyze_complete_transcript,
 )
 from src.models import MeetingMetadata, MinuteAnalysis
-from src.ollama_client import LocalEngineTimeout
+from src.ollama_client import LocalEngineTimeout, StructuredOutputTruncated
 from src.postprocess import normalize_analysis
 from src.processing_runtime import (
     adaptive_timeout_seconds,
@@ -187,16 +187,41 @@ def _warmup_and_replan_local(
         model=model,
         model_loaded=True,
     )
+    rank = {"fast": 0, "balanced": 1, "precise": 2}
+    previous_rank = rank.get(plan.effective_profile.profile_id, 1)
+    revised_rank = rank.get(revised.effective_profile.profile_id, 1)
+    selected = revised
+    retained_for_stability = False
+    if revised_rank > previous_rank:
+        # Una ejecución iniciada en modo conservador no debe aumentar después
+        # el tamaño de bloque. La memoria puede fluctuar durante el calentamiento
+        # y un ascenso produciría exactamente el pico que se intentó evitar.
+        selected = plan
+        retained_for_stability = True
+
     _emit(
         telemetry,
         "resource_recheck",
         percent=19,
         previous_profile=plan.effective_profile.profile_id,
         previous_profile_name=plan.effective_profile.display_name,
-        effective_profile=revised.effective_profile.to_dict(),
+        effective_profile=selected.effective_profile.to_dict(),
         resource_snapshot=snapshot.to_dict(),
-        reason=revised.reason,
+        reason=(
+            "Se conserva el perfil preventivo para evitar un aumento de carga."
+            if retained_for_stability
+            else revised.reason
+        ),
+        retained_for_stability=retained_for_stability,
     )
+    if retained_for_stability:
+        log(
+            "La memoria posterior permitiría un perfil mayor, pero se mantiene "
+            f"{plan.effective_profile.display_name} por estabilidad."
+        )
+        if revised.memory_warning:
+            log(f"Advertencia posterior a la carga: {revised.memory_warning}")
+        return plan
     if revised.effective_profile.profile_id != plan.effective_profile.profile_id:
         log(
             "Perfil ajustado después de cargar el modelo: "
@@ -426,12 +451,21 @@ def analyze_meeting(
                 knowledge_context=knowledge_context,
             )
             progress(76, "Comprobando resultados")
-        except LocalEngineTimeout:
-            pipeline_diagnostics["single_pass_timed_out"] = True
-            log(
-                "La etapa única excedió el tiempo. Se cambiará automáticamente a "
-                "bloques pequeños sin perder la fuente."
+        except (LocalEngineTimeout, StructuredOutputTruncated) as exc:
+            pipeline_diagnostics["single_pass_timed_out"] = isinstance(exc, LocalEngineTimeout)
+            pipeline_diagnostics["single_pass_structure_incomplete"] = isinstance(
+                exc, StructuredOutputTruncated
             )
+            if isinstance(exc, StructuredOutputTruncated):
+                log(
+                    "La respuesta de la etapa única quedó incompleta. Se cambiará "
+                    "automáticamente a bloques pequeños sin perder la fuente."
+                )
+            else:
+                log(
+                    "La etapa única excedió el tiempo. Se cambiará automáticamente a "
+                    "bloques pequeños sin perder la fuente."
+                )
             use_single_pass = False
 
     if not use_single_pass:

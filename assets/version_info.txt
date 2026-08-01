@@ -1,7 +1,7 @@
 VSVersionInfo(
   ffi=FixedFileInfo(
-    filevers=(2, 3, 4, 0),
-    prodvers=(2, 3, 4, 0),
+    filevers=(2, 3, 5, 0),
+    prodvers=(2, 3, 5, 0),
     mask=0x3f,
     flags=0x0,
     OS=0x40004,
@@ -14,12 +14,12 @@ VSVersionInfo(
       StringTable('040904B0', [
         StringStruct('CompanyName', 'ASH Ingeniería y Proyectos'),
         StringStruct('FileDescription', 'Gestor de Minutas ASH'),
-        StringStruct('FileVersion', '2.3.4'),
+        StringStruct('FileVersion', '2.3.5'),
         StringStruct('InternalName', 'MinutasASH'),
         StringStruct('LegalCopyright', 'ASH Ingeniería y Proyectos'),
         StringStruct('OriginalFilename', 'MinutasASH.exe'),
         StringStruct('ProductName', 'Minutas ASH'),
-        StringStruct('ProductVersion', '2.3.4')
+        StringStruct('ProductVersion', '2.3.5')
       ])
     ]),
     VarFileInfo([VarStruct('Translation', [1033, 1200])])

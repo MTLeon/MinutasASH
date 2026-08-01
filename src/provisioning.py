@@ -47,16 +47,14 @@ def setup_is_complete(config: dict | None = None) -> bool:
         return False
     if payload.get("model") != config.get("model"):
         return False
-    base_url = str(config.get("ollama_base_url", "http://127.0.0.1:11434"))
-    runtime_mode = str(config.get("runtime_mode", "auto"))
-    if not api_available(base_url):
-        if not start_ollama(base_url, runtime_mode=runtime_mode):
-            return False
-    try:
-        client = OllamaClient(base_url, str(config.get("model", "qwen3:8b")))
-        return client.model in client.list_models()
-    except Exception:
+    if not bool(payload.get("completed", True)):
         return False
+    runtime_mode = str(config.get("runtime_mode", "auto"))
+    # No se inicia Ollama durante el arranque de la interfaz. La preparación ya
+    # fue validada al escribir setup_state y el servicio se levanta bajo demanda
+    # al comenzar un análisis. Esto evita ventanas de consola y demoras antes de
+    # que el usuario vea la aplicación.
+    return find_ollama_executable(runtime_mode) is not None
 
 
 def write_setup_state(config: dict) -> None:

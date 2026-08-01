@@ -55,4 +55,4 @@ jobs:
           gh release create "${{ github.ref_name }}" $setup.FullName $hash.FullName `
             --verify-tag `
             --title "MinutasASH ${{ github.ref_name }}" `
-            --notes-file docs/NOTAS_VERSION_2.3.4.md
+            --notes-file docs/NOTAS_VERSION_2.3.5.md

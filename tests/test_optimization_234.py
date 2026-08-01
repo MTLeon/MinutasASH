@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 from src.meeting_sources import parse_text_transcript
 from src.ollama_client import OllamaClient
@@ -68,6 +69,51 @@ class Optimization234Tests(unittest.TestCase):
         )
         self.assertEqual(plan.effective_profile.profile_id, "fast")
         self.assertEqual(plan.effective_profile.context_length, 4096)
+
+    def test_warmup_recheck_never_upgrades_a_conservative_profile(self) -> None:
+        from src.workflow import _warmup_and_replan_local
+
+        class FakeClient:
+            def warmup(self) -> None:
+                return None
+
+        config = {"processing_profile": "auto", "processing_warmup_resource_recheck": True}
+        critical = ResourceSnapshot(
+            total_memory_bytes=16 * GIB,
+            available_memory_bytes=700 * 1024**2,
+            memory_percent=96.0,
+            captured_at=0.0,
+        )
+        healthy = ResourceSnapshot(
+            total_memory_bytes=32 * GIB,
+            available_memory_bytes=20 * GIB,
+            memory_percent=35.0,
+            captured_at=1.0,
+        )
+        initial = resolve_processing_plan(
+            config, 20_000, snapshot=critical, model="qwen3:8b", model_loaded=True
+        )
+        revised = resolve_processing_plan(
+            config, 20_000, snapshot=healthy, model="qwen3:8b", model_loaded=True
+        )
+        self.assertEqual(initial.effective_profile.profile_id, "fast")
+        self.assertEqual(revised.effective_profile.profile_id, "balanced")
+        logs: list[str] = []
+        with patch("src.workflow.get_resource_snapshot", return_value=healthy), patch(
+            "src.workflow.resolve_processing_plan", return_value=revised
+        ):
+            result = _warmup_and_replan_local(
+                FakeClient(),
+                config,
+                20_000,
+                "qwen3:8b",
+                initial,
+                log=logs.append,
+                progress=lambda _value, _message: None,
+                telemetry=lambda _event: None,
+            )
+        self.assertEqual(result.effective_profile.profile_id, "fast")
+        self.assertTrue(any("se mantiene" in line.casefold() for line in logs))
 
     def test_output_token_limit_depends_on_stage(self) -> None:
         client = OllamaClient(

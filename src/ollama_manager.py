@@ -6,8 +6,9 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+import threading
 import time
-from typing import Callable
+from typing import Any, Callable
 import zipfile
 
 import requests
@@ -23,6 +24,33 @@ from src.runtime_paths import (
 
 LogCallback = Callable[[str], None]
 ProgressCallback = Callable[[int, str], None]
+
+
+_START_LOCK = threading.Lock()
+_LOCAL_PROCESS: subprocess.Popen[Any] | None = None
+
+
+def _hidden_process_kwargs() -> dict[str, Any]:
+    """Opciones de subprocess que evitan ventanas de consola en Windows.
+
+    Se centralizan aquí para que todas las invocaciones del componente local
+    tengan el mismo comportamiento. ``DETACHED_PROCESS`` no se combina con
+    ``CREATE_NO_WINDOW`` porque Windows puede ignorar una de las banderas y
+    producir destellos de consola dependiendo de la instalación de Ollama.
+    """
+
+    if os.name != "nt":
+        return {}
+    kwargs: dict[str, Any] = {
+        "creationflags": int(getattr(subprocess, "CREATE_NO_WINDOW", 0)),
+    }
+    startup_class = getattr(subprocess, "STARTUPINFO", None)
+    if startup_class is not None:
+        startupinfo = startup_class()
+        startupinfo.dwFlags |= int(getattr(subprocess, "STARTF_USESHOWWINDOW", 0))
+        startupinfo.wShowWindow = int(getattr(subprocess, "SW_HIDE", 0))
+        kwargs["startupinfo"] = startupinfo
+    return kwargs
 
 
 class RuntimePreparationError(RuntimeError):
@@ -111,41 +139,47 @@ def start_ollama(
         log("No se encontró el componente de procesamiento local.")
         return False
 
-    log("Iniciando componente de procesamiento local...")
-    creationflags = 0
-    startupinfo = None
-    if os.name == "nt":
-        creationflags = subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS
-        startupinfo = subprocess.STARTUPINFO()
-        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-
-    logs_dir().mkdir(parents=True, exist_ok=True)
-    runtime_log = logs_dir() / "componente_local.log"
-    try:
-        with runtime_log.open("ab", buffering=0) as log_file:
-            subprocess.Popen(
-                [str(executable), "serve"],
-                stdout=log_file,
-                stderr=log_file,
-                stdin=subprocess.DEVNULL,
-                creationflags=creationflags,
-                startupinfo=startupinfo,
-                close_fds=True,
-                env=_managed_environment(executable),
-                cwd=str(executable.parent),
-            )
-    except OSError as exc:
-        log(f"No fue posible iniciar el componente local: {exc}")
-        return False
-
-    deadline = time.monotonic() + max(5.0, wait_seconds)
-    while time.monotonic() < deadline:
+    # Varias comprobaciones de inicio pueden coincidir (asistente inicial,
+    # diagnóstico y análisis). Solo una de ellas puede crear el proceso.
+    global _LOCAL_PROCESS
+    with _START_LOCK:
         if api_available(base_url):
-            log("Componente local iniciado correctamente.")
             return True
-        time.sleep(0.5)
-    log("El componente local se inició, pero todavía no responde.")
-    return False
+
+        process_running = _LOCAL_PROCESS is not None and _LOCAL_PROCESS.poll() is None
+        if process_running:
+            log("El componente local ya se está iniciando; esperando disponibilidad...")
+        else:
+            log("Iniciando componente de procesamiento local...")
+            logs_dir().mkdir(parents=True, exist_ok=True)
+            runtime_log = logs_dir() / "componente_local.log"
+            try:
+                with runtime_log.open("ab", buffering=0) as log_file:
+                    _LOCAL_PROCESS = subprocess.Popen(
+                        [str(executable), "serve"],
+                        stdout=log_file,
+                        stderr=log_file,
+                        stdin=subprocess.DEVNULL,
+                        close_fds=True,
+                        env=_managed_environment(executable),
+                        cwd=str(executable.parent),
+                        **_hidden_process_kwargs(),
+                    )
+            except OSError as exc:
+                log(f"No fue posible iniciar el componente local: {exc}")
+                return False
+
+        deadline = time.monotonic() + max(5.0, wait_seconds)
+        while time.monotonic() < deadline:
+            if api_available(base_url):
+                log("Componente local iniciado correctamente.")
+                return True
+            if _LOCAL_PROCESS is not None and _LOCAL_PROCESS.poll() is not None:
+                log("El componente local se cerró antes de quedar disponible.")
+                return False
+            time.sleep(0.5)
+        log("El componente local se inició, pero todavía no responde.")
+        return False
 
 
 def _safe_extract_zip(archive: Path, destination: Path) -> None:
@@ -333,17 +367,19 @@ def pull_model(model: str, log: LogCallback | None = None) -> int:
             "Use la opción 'Reparar componentes'."
         )
 
-    creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
     process = subprocess.Popen(
         [str(executable), "pull", model],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
+        stdin=subprocess.DEVNULL,
         text=True,
         encoding="utf-8",
         errors="replace",
         bufsize=1,
-        creationflags=creationflags,
+        close_fds=True,
+        cwd=str(executable.parent),
         env=_managed_environment(executable),
+        **_hidden_process_kwargs(),
     )
     assert process.stdout is not None
     for line in process.stdout:
