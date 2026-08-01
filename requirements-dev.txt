@@ -2,5 +2,5 @@
 pytest>=8,<10
 pytest-cov>=6,<8
 ruff>=0.9,<1
-mypy>=1.14,<2
+mypy>=2.3.0,<3
 types-requests>=2.32,<3
