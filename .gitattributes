@@ -1,0 +1,19 @@
+# Normalización de texto
+* text=auto
+*.py text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.txt text eol=lf
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.iss text eol=crlf
+
+# Archivos binarios
+*.docx binary
+*.png binary
+*.ico binary
+*.exe binary
+*.zip binary
+*.db binary

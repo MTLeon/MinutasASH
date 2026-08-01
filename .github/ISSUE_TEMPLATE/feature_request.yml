@@ -1,0 +1,34 @@
+name: Solicitar una mejora
+description: Proponer una mejora de funcionalidad, diseño o facilidad de uso.
+title: "[Mejora] "
+labels: [mejora]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problema del usuario
+      description: Describa la dificultad actual desde el punto de vista del usuario final.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Propuesta
+      description: Explique el comportamiento o diseño esperado.
+    validations:
+      required: true
+
+  - type: textarea
+    id: benefit
+    attributes:
+      label: Beneficio esperado
+      placeholder: "Menos pasos, menor tiempo de revisión, menor uso de memoria..."
+
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacidad
+      options:
+        - label: La solicitud no contiene datos reales de reuniones o clientes.
+          required: true

@@ -1,0 +1,18 @@
+{
+  "channels": {
+    "stable": {
+      "version": "2.3.4",
+      "release_sequence": 2003004,
+      "installer_url": "https://updates.ash.cl/minutas/MinutasASH_Setup_2.3.4_Online.exe",
+      "sha256": "REEMPLAZAR_CON_SHA256_REAL",
+      "mandatory": false,
+      "published_at": "2026-07-31T15:57:00-04:00",
+      "release_notes": [
+        "Menor uso de memoria con contexto y bloques adaptativos",
+        "Compactación de subtítulos y validación de participantes",
+        "Selección por arrastre, descarte con Supr y filtros por estado",
+        "Modelo local liberado al finalizar y checkpoints más livianos"
+      ]
+    }
+  }
+}

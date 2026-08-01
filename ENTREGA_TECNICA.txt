@@ -1,0 +1,24 @@
+MINUTAS ASH 2.1.0
+==================
+
+INSTALADOR ESPERADO
+-------------------
+dist_installer\MinutasASH_Setup_2.1.0_Online.exe
+
+MEJORAS PRINCIPALES
+-------------------
+- Panel de inicio.
+- Flujo guiado de cuatro pasos.
+- Numeración documental automática.
+- Perfiles de proyecto y participantes frecuentes.
+- Revisión lado a lado con la transcripción.
+- Semáforo de calidad.
+- Aprobación o descarte por punto.
+- Validación previa a generar Word.
+- Detección de VTT duplicados.
+- Esquema SQLite 4.
+- Preparación para GitHub Releases y actualizaciones.
+
+PRUEBA PILOTO
+-------------
+Consulte docs\PRUEBA_PILOTO_WINDOWS11.md.
