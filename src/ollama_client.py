@@ -22,6 +22,47 @@ class LocalEngineTimeout(LocalEngineError):
     """La solicitud local no terminó dentro del límite adaptativo."""
 
 
+class StructuredOutputError(LocalEngineError):
+    """La respuesta llegó, pero no pudo validarse contra el esquema."""
+
+
+class StructuredOutputTruncated(StructuredOutputError):
+    """La generación terminó antes de cerrar el JSON estructurado."""
+
+
+def _validation_indicates_truncation(
+    content: str,
+    error: ValidationError,
+    metrics: dict[str, Any],
+) -> bool:
+    """Detecta respuestas JSON cortadas sin confundirlas con errores de campos."""
+
+    done_reason = str(metrics.get("done_reason") or "").casefold()
+    if done_reason in {"length", "max_tokens", "token_limit"}:
+        return True
+
+    messages = " ".join(
+        f"{item.get('type', '')} {item.get('msg', '')}" for item in error.errors()
+    ).casefold()
+    truncation_markers = (
+        "eof while parsing",
+        "unterminated string",
+        "unexpected end",
+        "end of data",
+        "expected `,` or `}`",
+        "expected value at line",
+    )
+    if any(marker in messages for marker in truncation_markers):
+        return True
+
+    try:
+        json.loads(content)
+    except json.JSONDecodeError as exc:
+        near_end = exc.pos >= max(0, len(content) - 16)
+        return near_end or "unterminated" in exc.msg.casefold()
+    return False
+
+
 # Alias de compatibilidad con versiones anteriores.
 OllamaError = LocalEngineError
 
@@ -35,9 +76,9 @@ class OllamaClient:
         temperature: float = 0.05,
         context_length: int = 6144,
         keep_alive: str = "2m",
-        max_output_tokens: int = 900,
-        consolidation_output_tokens: int = 1200,
-        recovery_output_tokens: int = 700,
+        max_output_tokens: int = 1400,
+        consolidation_output_tokens: int = 1800,
+        recovery_output_tokens: int = 1000,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.model = model
@@ -339,14 +380,22 @@ class OllamaClient:
         response_model: Type[T],
     ) -> T:
         schema = response_model.model_json_schema()
-        messages = [
+        base_messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ]
+        messages = list(base_messages)
         last_validation_error: ValidationError | None = None
         last_content = ""
+        last_was_truncated = False
+        base_limit = self._output_limit()
+        output_limit = base_limit
+        # El límite se amplía solo cuando el JSON efectivamente queda cortado.
+        # Así no se penalizan las respuestas normales ni se reserva memoria de más.
+        maximum_limit = min(4096, max(base_limit, self.context_length // 2))
+        max_attempts = 3
 
-        for attempt in range(2):
+        for attempt in range(max_attempts):
             payload = {
                 "model": self.model,
                 "messages": messages,
@@ -356,37 +405,68 @@ class OllamaClient:
                 "options": {
                     "temperature": 0.0 if attempt else self.temperature,
                     "num_ctx": self.context_length,
-                    "num_predict": self._output_limit(),
+                    "num_predict": output_limit,
                 },
                 "keep_alive": self.keep_alive,
             }
-            self._emit("validation_attempt", attempt=attempt + 1)
-            last_content, _metrics = self._stream_chat(payload)
+            self._emit(
+                "validation_attempt",
+                attempt=attempt + 1,
+                output_token_limit=output_limit,
+            )
+            last_content, metrics = self._stream_chat(payload)
 
             try:
                 return response_model.model_validate_json(last_content)
             except ValidationError as exc:
                 last_validation_error = exc
+                last_was_truncated = _validation_indicates_truncation(
+                    last_content, exc, metrics
+                )
                 self._emit(
                     "schema_validation_failed",
                     attempt=attempt + 1,
                     error_count=len(exc.errors()),
+                    truncated=last_was_truncated,
+                    output_token_limit=output_limit,
                 )
+
+                if last_was_truncated and output_limit < maximum_limit:
+                    output_limit = min(
+                        maximum_limit,
+                        max(output_limit + 384, int(output_limit * 1.65)),
+                    )
+                    correction = (
+                        "La respuesta anterior quedó cortada antes de cerrar el JSON. "
+                        "Responde nuevamente desde cero, conserva todos los puntos, "
+                        "usa descripciones más concisas y entrega exclusivamente un "
+                        "JSON completo y válido."
+                    )
+                else:
+                    correction = (
+                        "La respuesta anterior no respetó el esquema JSON. "
+                        "Vuelve a responder desde cero y entrega exclusivamente "
+                        "un JSON válido que cumpla exactamente el esquema solicitado."
+                    )
                 messages = [
-                    {"role": "system", "content": system_prompt},
+                    base_messages[0],
                     {
                         "role": "user",
-                        "content": (
-                            user_prompt
-                            + "\n\nLa respuesta anterior no respetó el esquema JSON. "
-                              "Vuelve a responder desde cero y entrega exclusivamente "
-                              "un JSON válido que cumpla exactamente el esquema solicitado."
-                        ),
+                        "content": user_prompt + "\n\n" + correction,
                     },
                 ]
 
-        raise LocalEngineError(
-            "El resultado no cumplió la estructura requerida después de dos intentos.\n"
+        detail = str(last_validation_error or "Error de validación no especificado")
+        if last_was_truncated:
+            raise StructuredOutputTruncated(
+                "La respuesta estructurada quedó incompleta aun después de ampliar "
+                "el límite de salida. El bloque debe dividirse automáticamente para "
+                "continuar sin perder el avance.\n"
+                f"Último fragmento recibido:\n{last_content[-800:]}\n\n"
+                f"Error de validación:\n{detail}"
+            )
+        raise StructuredOutputError(
+            "El resultado no cumplió la estructura requerida después de tres intentos.\n"
             f"Última respuesta:\n{last_content[:1200]}\n\n"
-            f"Error de validación:\n{last_validation_error}"
+            f"Error de validación:\n{detail}"
         )

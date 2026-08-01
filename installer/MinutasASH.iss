@@ -1,5 +1,5 @@
 #define MyAppName "Minutas ASH"
-#define MyAppVersion "2.3.4"
+#define MyAppVersion "2.3.5"
 #define MyAppPublisher "ASH Ingeniería y Proyectos"
 #define MyAppExeName "MinutasASH.exe"
 
@@ -17,7 +17,7 @@ DefaultGroupName=ASH
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 OutputDir=..\dist_installer
-OutputBaseFilename=MinutasASH_Setup_2.3.4_Online
+OutputBaseFilename=MinutasASH_Setup_2.3.5_Online
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern

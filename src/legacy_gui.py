@@ -69,7 +69,7 @@ from src.workflow import AnalysisBundle, analyze_meeting, generate_word_package
 from src.ui_state import configure_resizable_window
 
 
-APP_TITLE = "Minutas ASH 2.3.4"
+APP_TITLE = "Minutas ASH 2.3.5"
 DATE_HINT = "AAAA-MM-DD"
 
 
@@ -1163,6 +1163,19 @@ class MinutasApp(tk.Tk):
 
     def _analysis_worker(self, vtt_path: Path, metadata: MeetingMetadata, config: dict, model: str) -> None:
         try:
+            provider_id = str(config.get("processing_provider", "ollama_local"))
+            if provider_id == "ollama_local":
+                self.worker_queue.put(("progress", (8, "Iniciando procesamiento local")))
+                if not start_ollama(
+                    str(config.get("ollama_base_url", "http://127.0.0.1:11434")),
+                    log=lambda message: self.worker_queue.put(("log", message)),
+                    runtime_mode=str(config.get("runtime_mode", "auto")),
+                    wait_seconds=45,
+                ):
+                    raise RuntimeError(
+                        "No fue posible iniciar el procesamiento local. Use "
+                        "'Reparar componentes' desde Herramientas."
+                    )
             bundle = analyze_meeting(
                 vtt_path,
                 metadata,
@@ -1322,10 +1335,16 @@ class MinutasApp(tk.Tk):
                 except (TypeError, ValueError):
                     pass
         elif event_type == "chunk_split":
-            self._log(
-                "El bloque lento fue dividido automáticamente en "
-                f"{payload.get('child_count', '?')} partes."
-            )
+            if payload.get("reason") == "structured_output_truncated":
+                self._log(
+                    "La respuesta estructurada quedó incompleta y el bloque fue "
+                    f"dividido automáticamente en {payload.get('child_count', '?')} partes."
+                )
+            else:
+                self._log(
+                    "El bloque lento fue dividido automáticamente en "
+                    f"{payload.get('child_count', '?')} partes."
+                )
         elif event_type == "chunk_retry":
             self._log(
                 f"Reintento adaptativo del bloque · intento {payload.get('attempt', '?')}."
@@ -1382,7 +1401,7 @@ class MinutasApp(tk.Tk):
                 model=bundle.model,
                 status="procesada",
                 meeting_id=self.current_meeting_id,
-                app_version=str(self.config_data.get("app_version", "2.3.4")),
+                app_version=str(self.config_data.get("app_version", "2.3.5")),
                 document_provider=str(self.config_data.get("document_provider", "ash_minutes_v1")),
                 processing_provider=bundle.provider_id,
                 processing_provider_name=bundle.provider_name,
@@ -1515,7 +1534,7 @@ class MinutasApp(tk.Tk):
                 docx_path=str(docx_path),
                 json_path=str(json_path),
                 meeting_id=self.current_meeting_id,
-                app_version=str(self.config_data.get("app_version", "2.3.4")),
+                app_version=str(self.config_data.get("app_version", "2.3.5")),
                 document_provider=str(self.config_data.get("document_provider", "ash_minutes_v1")),
                 processing_provider=self.analysis_bundle.provider_id,
                 processing_provider_name=self.analysis_bundle.provider_name,
@@ -1569,6 +1588,21 @@ class MinutasApp(tk.Tk):
 
         def worker() -> None:
             try:
+                if provider_id == "ollama_local":
+                    base_url = str(
+                        self.config_data.get("ollama_base_url", "http://127.0.0.1:11434")
+                    )
+                    runtime_mode = str(self.config_data.get("runtime_mode", "auto"))
+                    # El servicio local se inicia solo al procesar. Si el runtime
+                    # está instalado, la interfaz puede considerarse preparada sin
+                    # abrir procesos externos durante el arranque.
+                    if not api_available(base_url):
+                        if find_ollama_executable(runtime_mode) is None:
+                            raise RuntimeError(
+                                "No se encontró el componente local. Use 'Reparar componentes'."
+                            )
+                        self.worker_queue.put(("provider_status", (True, provider_id, [], None)))
+                        return
                 provider = create_processing_provider(self.config_data, provider_id)
                 provider.check_connection()
                 models: list[str] = []
@@ -1635,7 +1669,7 @@ class MinutasApp(tk.Tk):
             self.config_data = save_settings_dict(self.config_data)
         except Exception as exc:
             self._log(f"No se pudo guardar la fecha de actualización: {exc}")
-        current = str(self.config_data.get("app_version", "2.3.4"))
+        current = str(self.config_data.get("app_version", "2.3.5"))
         if not is_newer_version(info.version, current):
             self.progress_text_var.set("Aplicación actualizada")
             if manual:
@@ -1715,7 +1749,7 @@ class MinutasApp(tk.Tk):
         messagebox.showinfo(
             "Acerca de Minutas ASH",
             (
-                "Minutas ASH 2.3.4\n\n"
+                "Minutas ASH 2.3.5\n\n"
                 "Gestión, revisión y emisión de minutas corporativas.\n"
                 f"Método configurado: {provider_display_name(provider_id)}\n\n"
                 "ASH Ingeniería y Proyectos"

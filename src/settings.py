@@ -20,10 +20,10 @@ class AppSettings(BaseModel):
 
     model_config = ConfigDict(extra="ignore", str_strip_whitespace=True)
 
-    app_version: str = "2.3.4"
-    release_sequence: int = Field(default=2003004, ge=1)
+    app_version: str = "2.3.5"
+    release_sequence: int = Field(default=2003005, ge=1)
     product_generation: int = Field(default=2, ge=1)
-    legacy_predecessor: str = "2.3.3"
+    legacy_predecessor: str = "2.3.4"
     schema_version: int = Field(default=6, ge=1)
     ollama_base_url: str = "http://127.0.0.1:11434"
     model: str = "qwen3:8b"
@@ -43,6 +43,7 @@ class AppSettings(BaseModel):
     adaptive_timeout_max_seconds: int = Field(default=7200, ge=300, le=14400)
     processing_max_chunk_retries: int = Field(default=3, ge=0, le=8)
     processing_split_on_timeout: bool = True
+    processing_split_on_structure_error: bool = True
     processing_min_chunk_chars: int = Field(default=1800, ge=1000, le=10000)
     processing_consolidation_batch_chars: int = Field(default=8500, ge=5000, le=100000)
     processing_overlap_lines: int = Field(default=1, ge=0, le=8)
@@ -55,9 +56,9 @@ class AppSettings(BaseModel):
     processing_release_completed_text: bool = True
     processing_model_memory_reserve_gib: float = Field(default=0.0, ge=0.0, le=64.0)
     processing_min_free_memory_gib: float = Field(default=1.5, ge=0.5, le=32.0)
-    ollama_max_output_tokens: int = Field(default=900, ge=128, le=4096)
-    ollama_consolidation_output_tokens: int = Field(default=1200, ge=128, le=4096)
-    ollama_recovery_output_tokens: int = Field(default=700, ge=128, le=4096)
+    ollama_max_output_tokens: int = Field(default=1400, ge=128, le=4096)
+    ollama_consolidation_output_tokens: int = Field(default=1800, ge=128, le=4096)
+    ollama_recovery_output_tokens: int = Field(default=1000, ge=128, le=4096)
     memory_warning_percent: float = Field(default=85.0, ge=50.0, le=99.0)
     memory_critical_percent: float = Field(default=93.0, ge=60.0, le=100.0)
 

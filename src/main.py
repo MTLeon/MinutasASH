@@ -73,7 +73,7 @@ def main() -> int:
         status="generada",
         docx_path=str(docx),
         json_path=str(json_path),
-        app_version=str(config.get("app_version", "2.3.4")),
+        app_version=str(config.get("app_version", "2.3.5")),
         document_provider=str(config.get("document_provider", "ash_minutes_v1")),
         processing_provider=bundle.provider_id,
         processing_provider_name=bundle.provider_name,
