@@ -13,7 +13,7 @@ from typing import Any
 
 from src.minute_generator import analyze_chunks, consolidate_minute
 from src.models import ChunkAnalysis, MeetingItem, MinuteAnalysis
-from src.ollama_client import LocalEngineError, LocalEngineTimeout
+from src.ollama_client import LocalEngineError, LocalEngineTimeout, StructuredOutputTruncated
 from src.processing_checkpoint import (
     ProcessingCheckpoint,
     ProcessingCheckpointStore,
@@ -356,6 +356,72 @@ def _process_chunks(
                     "No fue posible completar uno de los bloques mínimos. "
                     "El avance quedó guardado; cierre aplicaciones exigentes o use el perfil Rápido y continúe."
                 ) from timeout_error
+            except StructuredOutputTruncated as exc:
+                duration = monotonic() - started
+                checkpoint.retries[chunk_id] = attempt + 1
+                retry_total += 1
+                can_split = (
+                    bool(config.get("processing_split_on_structure_error", True))
+                    and len(text) > profile.min_chunk_chars * 1.20
+                )
+                if can_split:
+                    target = max(profile.min_chunk_chars, int(len(text) * 0.50))
+                    parts = split_text_chunk(
+                        text,
+                        target,
+                        overlap_lines=profile.overlap_lines,
+                    )
+                    if len(parts) > 1:
+                        depth = int(item.get("depth") or 0) + 1
+                        children = [
+                            {
+                                "id": _work_id(chunk_id, child_index, depth),
+                                "text": part,
+                                "depth": depth,
+                                "parent_id": chunk_id,
+                            }
+                            for child_index, part in enumerate(parts, start=1)
+                        ]
+                        checkpoint.work_items[index:index + 1] = children
+                        checkpoint.split_count += 1
+                        checkpoint.status = "in_progress"
+                        store.save(checkpoint)
+                        log(
+                            f"La respuesta del bloque {chunk_id} quedó incompleta y "
+                            f"se dividió automáticamente en {len(children)} partes. "
+                            "Los bloques anteriores permanecen guardados."
+                        )
+                        _emit(
+                            telemetry,
+                            "chunk_split",
+                            block_id=chunk_id,
+                            child_count=len(children),
+                            duration_seconds=duration,
+                            total_blocks=len(checkpoint.work_items),
+                            reason="structured_output_truncated",
+                        )
+                        continue
+                if attempt < profile.max_retries:
+                    store.save(checkpoint)
+                    log(
+                        f"El bloque {chunk_id} devolvió un JSON incompleto y se "
+                        f"reintentará ({attempt + 1}/{profile.max_retries})."
+                    )
+                    _emit(
+                        telemetry,
+                        "chunk_retry",
+                        block_id=chunk_id,
+                        attempt=attempt + 1,
+                        duration_seconds=duration,
+                        reason="structured_output_truncated",
+                    )
+                    continue
+                checkpoint.status = "error"
+                store.save(checkpoint)
+                raise LocalEngineError(
+                    "Uno de los bloques mínimos siguió produciendo una respuesta "
+                    "incompleta. El avance quedó guardado para continuar después."
+                ) from exc
             except InterruptedError:
                 checkpoint.status = "paused"
                 store.save(checkpoint)

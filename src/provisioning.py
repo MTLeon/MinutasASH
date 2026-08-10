@@ -51,15 +51,11 @@ def setup_is_complete(config: dict | None = None) -> bool:
         return False
     if payload.get("model") != config.get("model"):
         return False
-    base_url = str(config.get("ollama_base_url", "http://127.0.0.1:11434"))
+    if not bool(payload.get("completed", True)):
+        return False
     runtime_mode = str(config.get("runtime_mode", "auto"))
-    if not api_available(base_url) and not start_ollama(base_url, runtime_mode=runtime_mode):
-        return False
-    try:
-        client = OllamaClient(base_url, str(config.get("model", "qwen3:8b")))
-        return client.model in client.list_models()
-    except Exception:
-        return False
+    # La comprobación de inicio no levanta procesos externos; Ollama se inicia al procesar.
+    return find_ollama_executable(runtime_mode) is not None
 
 
 def write_setup_state(config: dict) -> None:

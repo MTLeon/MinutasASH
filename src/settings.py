@@ -43,6 +43,7 @@ class AppSettings(BaseModel):
     adaptive_timeout_max_seconds: int = Field(default=7200, ge=300, le=14400)
     processing_max_chunk_retries: int = Field(default=3, ge=0, le=8)
     processing_split_on_timeout: bool = True
+    processing_split_on_structure_error: bool = True
     processing_min_chunk_chars: int = Field(default=1800, ge=1000, le=10000)
     processing_consolidation_batch_chars: int = Field(default=12000, ge=5000, le=100000)
     processing_overlap_lines: int = Field(default=2, ge=0, le=8)

@@ -23,7 +23,7 @@ from src.minute_generator import (
     analyze_complete_transcript,
 )
 from src.models import MeetingMetadata, MinuteAnalysis
-from src.ollama_client import LocalEngineTimeout
+from src.ollama_client import LocalEngineTimeout, StructuredOutputTruncated
 from src.postprocess import normalize_analysis
 from src.processing_runtime import (
     adaptive_timeout_seconds,
@@ -306,12 +306,21 @@ def analyze_meeting(
                 knowledge_context=knowledge_context,
             )
             progress(76, "Comprobando resultados")
-        except LocalEngineTimeout:
-            pipeline_diagnostics["single_pass_timed_out"] = True
-            log(
-                "La etapa única excedió el tiempo. Se cambiará automáticamente a "
-                "bloques pequeños sin perder la fuente."
+        except (LocalEngineTimeout, StructuredOutputTruncated) as exc:
+            pipeline_diagnostics["single_pass_timed_out"] = isinstance(exc, LocalEngineTimeout)
+            pipeline_diagnostics["single_pass_structure_incomplete"] = isinstance(
+                exc, StructuredOutputTruncated
             )
+            if isinstance(exc, StructuredOutputTruncated):
+                log(
+                    "La respuesta de la etapa única quedó incompleta. Se cambiará "
+                    "automáticamente a bloques pequeños sin perder la fuente."
+                )
+            else:
+                log(
+                    "La etapa única excedió el tiempo. Se cambiará automáticamente a "
+                    "bloques pequeños sin perder la fuente."
+                )
             use_single_pass = False
 
     if not use_single_pass:
