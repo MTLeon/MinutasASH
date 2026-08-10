@@ -1,0 +1,35 @@
+name: Solicitud de mejora
+description: Proponer una función o mejora de proceso
+title: "[Mejora]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: Necesidad
+      description: ¿Qué problema de negocio o uso se busca resolver?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Propuesta
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Área
+      options:
+        - Interfaz
+        - Procesamiento
+        - Documento Word
+        - Base de datos
+        - Instalador
+        - Nuevo tipo documental
+        - Integración externa
+        - Otra
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Criterios de aceptación

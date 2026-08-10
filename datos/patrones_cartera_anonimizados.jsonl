@@ -1,0 +1,4 @@
+{"source":"Hablante A: Lo voy a revisar hoy.","expected":{"category":"compromiso","responsible":"Hablante A"}}
+{"source":"Hablante B: Estamos a la espera de la orden de compra.","expected":{"category":"pendiente","responsible":null}}
+{"source":"Hablante A: Si la próxima semana no hay respuesta, tengo que cerrar técnicamente y notificar.","expected":{"category":"compromiso","responsible":"Hablante A","due_date_text":"la próxima semana"}}
+{"source":"Proyecto 4321. Hablante C: Hay que volver a contactar al cliente.","expected":{"project_code":"4321","category":"compromiso","responsible":null}}

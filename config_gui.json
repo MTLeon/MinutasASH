@@ -1,0 +1,14 @@
+{
+  "ollama_base_url": "http://localhost:11434",
+  "model": "qwen3:8b",
+  "timeout_seconds": 900,
+  "max_chars_per_chunk": 12000,
+  "temperature": 0.1,
+  "company_name": "ASH Ingeniería y Proyectos",
+  "logo_path": "assets/logo_ash.png",
+  "auto_add_transcript_speakers": true,
+  "output_prefix": "Minuta",
+  "border_color": "1F497D",
+  "output_dir": "C:\\MinutasTeams\\salida",
+  "open_word_after_generation": true
+}

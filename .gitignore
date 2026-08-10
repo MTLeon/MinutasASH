@@ -1,0 +1,76 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Entornos virtuales
+.venv/
+.buildvenv/
+venv/
+env/
+
+# Construcción y distribución
+build/
+dist/
+dist_installer/
+*.spec.bak
+*.log
+
+# Runtime local y datos de usuario
+.runtime/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+setup_state.json
+ultima_sesion.json
+
+# Documentos y transcripciones generados
+entrada/*.vtt
+entrada/datos_reunion.json
+salida/*
+!entrada/reunion_prueba_ejemplo.vtt
+!entrada/datos_reunion_ejemplo.json
+!salida/README.txt
+**/01_Fuente/
+**/02_Documentos/
+**/03_Registro/
+
+# Modelos y componentes locales
+models/
+ollama/
+*.gguf
+*.bin
+
+# IDE / sistema operativo
+.vscode/
+.idea/
+*.code-workspace
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Secretos y certificados
+.env
+.env.*
+!.env.example
+*.pfx
+*.p12
+*.pem
+*.key
+*.cer
+*.crt
+
+# Archivos temporales
+*.tmp
+*.temp
+*.bak
+*.swp
+~$*

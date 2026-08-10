@@ -1,0 +1,17 @@
+{
+  "channels": {
+    "stable": {
+      "version": "2.3.3",
+      "release_sequence": 2003003,
+      "installer_url": "https://updates.ash.cl/minutas/MinutasASH_Setup_2.3.3_Online.exe",
+      "sha256": "REEMPLAZAR_CON_SHA256_REAL",
+      "mandatory": false,
+      "published_at": "2026-07-30T23:59:00-04:00",
+      "release_notes": [
+        "Flujo guiado de cuatro pasos",
+        "Numeración y perfiles de proyecto",
+        "Revisión contextual y semáforo de calidad"
+      ]
+    }
+  }
+}

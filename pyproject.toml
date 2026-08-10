@@ -1,0 +1,67 @@
+[project]
+name = "minutas-ash"
+version = "2.3.3"
+description = "Aplicación de escritorio para preparar minutas corporativas ASH desde transcripciones de Microsoft Teams."
+requires-python = ">=3.12,<3.15"
+dependencies = [
+  "requests>=2.32,<3",
+  "pydantic>=2.10,<3",
+  "python-docx>=1.1,<2",
+  "tkinterdnd2>=0.4.3,<1",
+  "openpyxl>=3.1,<4",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+
+[tool.coverage.run]
+branch = true
+source = ["src"]
+omit = [
+  "src/gui.py",
+  "src/legacy_gui.py",
+  "src/administration.py",
+  "src/help_center.py",
+  "src/preferences.py",
+  "src/provisioning.py",
+  "src/main.py",
+  "src/diagnostics.py",
+  "src/ollama_manager.py",
+  "src/ollama_client.py",
+  "src/secret_store.py",
+  "src/app_logging.py",
+  "src/repositories/base.py",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+fail_under = 65
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+exclude = ["build", "dist", "dist_installer", ".buildvenv", ".venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+ignore = ["E501"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
+[tool.mypy]
+python_version = "3.12"
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+check_untyped_defs = true
+no_implicit_optional = true
+exclude = "^(build|dist|dist_installer|\\.buildvenv|\\.venv)/"
+
+[[tool.mypy.overrides]]
+module = ["openpyxl.*"]
+ignore_missing_imports = true

@@ -1,0 +1,32 @@
+{
+  "minute_number": "DEMO-MRE-PR-00",
+  "document_date": "2026-07-30",
+  "meeting_date": "2026-07-30",
+  "location": "Microsoft Teams",
+  "matter": "Reunión de coordinación - Demostración",
+  "project_code": "DEMO-001",
+  "project_description": "Proyecto de demostración sin datos reales",
+  "client": "Cliente de demostración",
+  "minute_taker": "Ana Pérez",
+  "minute_taker_date": "2026-07-30",
+  "approved_by": "",
+  "approval_date": "",
+  "attendees": [
+    {
+      "id": 1,
+      "initials": "AP",
+      "name": "Ana Pérez",
+      "email": "",
+      "role": "Coordinación",
+      "organization": "ASH"
+    },
+    {
+      "id": 2,
+      "initials": "CS",
+      "name": "Carlos Soto",
+      "email": "",
+      "role": "Ingeniería",
+      "organization": "ASH"
+    }
+  ]
+}
