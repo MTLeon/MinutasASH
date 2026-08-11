@@ -50,8 +50,16 @@ def worker_path() -> Path:
     return Path(base) / "MinutasASH" / "components" / "whisper" / "WhisperWorker.exe"
 
 
+def local_engine_available() -> bool:
+    return importlib.util.find_spec("faster_whisper") is not None
+
+
+def worker_available() -> bool:
+    return worker_path().is_file()
+
+
 def engine_available() -> bool:
-    return importlib.util.find_spec("faster_whisper") is not None or worker_path().is_file()
+    return local_engine_available() or worker_available()
 
 
 def default_model_cache() -> Path:

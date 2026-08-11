@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from src.diarization import diarize_segments
-from src.transcription_components import ModelName, diagnose, transcribe, worker_path
+from src.transcription_components import ModelName, local_engine_available, transcribe, worker_path
 
 SUPPORTED_MEDIA_SUFFIXES = {".mp3", ".wav", ".m4a", ".flac", ".ogg", ".mp4", ".mkv", ".webm"}
 
@@ -133,8 +133,7 @@ def transcribe_media(
     if model_name not in {"base", "small"}:
         raise ValueError("Seleccione el modelo Whisper base o small.")
     selected_model = cast(ModelName, model_name)
-    status = diagnose(selected_model)
-    if status.engine_available:
+    if local_engine_available():
         segments, detected_language, probability = transcribe(
             source_path,
             model_name=selected_model,
