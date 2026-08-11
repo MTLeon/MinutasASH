@@ -6,7 +6,11 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from src.audio_transcription import normalize_whisper_result, transcribe_media
+from src.audio_transcription import (
+    AudioTranscriptionUnavailable,
+    normalize_whisper_result,
+    transcribe_media,
+)
 
 
 class AudioTranscriptionTests(unittest.TestCase):
@@ -63,6 +67,27 @@ class AudioTranscriptionTests(unittest.TestCase):
         self.assertEqual(target.name, "reunion_transcripcion.txt")
         self.assertIn("[00:00:00] Hablante no identificado: Hola equipo", content)
         run.assert_called_once()
+
+    @patch("src.audio_transcription.subprocess.run")
+    @patch("src.audio_transcription.worker_path")
+    @patch("src.audio_transcription.local_engine_available", return_value=False)
+    def test_worker_empty_stdout_reports_transcription_error(
+        self, _engine: Mock, worker_path: Mock, run: Mock
+    ):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "reunion.ogg"
+            source.write_bytes(b"ogg")
+            worker = root / "WhisperWorker.exe"
+            worker.write_text("", encoding="utf-8")
+            worker_path.return_value = worker
+            run.return_value = Mock(returncode=0, stdout=None, stderr="")
+
+            with self.assertRaisesRegex(
+                AudioTranscriptionUnavailable,
+                "Whisper no devolvió un resultado de transcripción",
+            ):
+                transcribe_media(source, model_name="base", language="es")
 
 
 if __name__ == "__main__":

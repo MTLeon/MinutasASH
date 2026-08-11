@@ -4,8 +4,14 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 from src.transcription_components import default_model_cache, transcribe
+
+
+def emit_json(payload: dict[str, Any]) -> None:
+    data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    sys.stdout.buffer.write(data + b"\n")
 
 
 def main() -> int:
@@ -25,26 +31,22 @@ def main() -> int:
                 compute_type="int8",
                 download_root=str(default_model_cache()),
             )
-            print(json.dumps({"downloaded": args.model}))
+            emit_json({"downloaded": args.model})
             return 0
         if not args.source:
             parser.error("--source es obligatorio para transcribir")
         segments, language, probability = transcribe(
             Path(args.source), model_name=args.model, language=args.language
         )
-        print(
-            json.dumps(
-                {
-                    "language": language,
-                    "language_probability": probability,
-                    "text": " ".join(item.text for item in segments),
-                    "segments": [
-                        {"start": item.start, "end": item.end, "text": item.text}
-                        for item in segments
-                    ],
-                },
-                ensure_ascii=False,
-            )
+        emit_json(
+            {
+                "language": language,
+                "language_probability": probability,
+                "text": " ".join(item.text for item in segments),
+                "segments": [
+                    {"start": item.start, "end": item.end, "text": item.text} for item in segments
+                ],
+            }
         )
         return 0
     except Exception as exc:

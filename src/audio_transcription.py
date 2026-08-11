@@ -166,6 +166,7 @@ def transcribe_media(
             capture_output=True,
             text=True,
             encoding="utf-8",
+            errors="replace",
             timeout=14400,
             check=False,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
@@ -174,7 +175,17 @@ def transcribe_media(
             raise AudioTranscriptionUnavailable(
                 completed.stderr.strip() or "Whisper no pudo transcribir el archivo."
             )
-        result = json.loads(completed.stdout)
+        if not completed.stdout:
+            detail = completed.stderr.strip() if completed.stderr else ""
+            raise AudioTranscriptionUnavailable(
+                detail or "Whisper no devolvió un resultado de transcripción."
+            )
+        try:
+            result = json.loads(completed.stdout)
+        except json.JSONDecodeError as exc:
+            raise AudioTranscriptionUnavailable(
+                "Whisper devolvió una respuesta no válida. Revise el registro de diagnóstico."
+            ) from exc
 
     diarized = False
     detail = ""
