@@ -38,10 +38,10 @@ if ($Fix) {
 if (-not $Fast) {
     Invoke-Gate "Tipos" { & $python -m mypy src }
     Invoke-Gate "Pruebas y cobertura" {
-        & $python -m pytest --cov=src --cov-report=term-missing --cov-report=xml
+        & $python -m pytest --basetemp .runtime\pytest-quality --cov=src --cov-report=term-missing --cov-report=xml
     }
 } else {
-    Invoke-Gate "Pruebas rápidas" { & $python -m pytest -q }
+    Invoke-Gate "Pruebas rápidas" { & $python -m pytest --basetemp .runtime\pytest-quality-fast -q }
 }
 
 Write-Host "`nTodas las puertas de calidad finalizaron correctamente."

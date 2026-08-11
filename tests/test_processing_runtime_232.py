@@ -57,7 +57,9 @@ class ProcessingRuntime232Tests(unittest.TestCase):
         healthy = ResourceSnapshot(16 * 1024**3, 8 * 1024**3, 50.0, 0.0)
         pressured = ResourceSnapshot(16 * 1024**3, 600 * 1024**2, 96.0, 0.0)
         first = adaptive_timeout_seconds(profile, profile.chunk_chars, {}, snapshot=healthy)
-        retry = adaptive_timeout_seconds(profile, profile.chunk_chars, {}, attempt=2, snapshot=pressured)
+        retry = adaptive_timeout_seconds(
+            profile, profile.chunk_chars, {}, attempt=2, snapshot=pressured
+        )
         self.assertGreater(retry, first)
 
     def test_split_text_chunk_keeps_complete_lines(self) -> None:

@@ -59,7 +59,7 @@ class MeetingMetadata(StrictModel):
     template_version_id: int | None = None
     template_key: str | None = None
     template_version: str | None = None
-    source_type: Literal["vtt", "docx", "txt", "pasted", "notes"] = "vtt"
+    source_type: Literal["vtt", "srt", "docx", "pdf", "txt", "pasted", "notes"] = "vtt"
     source_quality: Literal["alta", "media", "baja"] = "alta"
     attendees: list[Attendee] = Field(default_factory=list)
 
@@ -136,6 +136,8 @@ class MeetingItem(StrictModel):
         default=None,
         description="Marca temporal real de la transcripción.",
     )
+    evidence_score: float | None = Field(default=None, ge=0.0, le=1.0)
+    evidence_verified: bool | None = None
     confidence: float = Field(default=0.5, ge=0.0, le=1.0)
     review_status: Literal["pendiente", "aprobado", "descartado"] = "pendiente"
     origin: Literal["modelo", "regla", "manual", "importado"] = "modelo"

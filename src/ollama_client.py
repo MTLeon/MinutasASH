@@ -10,6 +10,8 @@ from typing import Any, TypeVar
 import requests
 from pydantic import BaseModel, ValidationError
 
+from src.providers.structured_validation import validate_model_json
+
 T = TypeVar("T", bound=BaseModel)
 TelemetryCallback = Callable[[dict[str, Any]], None]
 CancelCallback = Callable[[], bool]
@@ -153,9 +155,7 @@ class OllamaClient:
                 "Use la opción 'Reparar componentes' en Configuración."
             ) from exc
         return sorted(
-            model.get("name")
-            for model in response.json().get("models", [])
-            if model.get("name")
+            model.get("name") for model in response.json().get("models", []) if model.get("name")
         )
 
     def check_connection(self) -> None:
@@ -315,9 +315,7 @@ class OllamaClient:
                 )
             content = "".join(content_parts)
             if not content:
-                raise LocalEngineError(
-                    "El motor local no entregó contenido para validar."
-                )
+                raise LocalEngineError("El motor local no entregó contenido para validar.")
             self._emit(
                 "request_finished",
                 elapsed_seconds=monotonic() - started,
@@ -416,12 +414,10 @@ class OllamaClient:
             last_content, metrics = self._stream_chat(payload)
 
             try:
-                return response_model.model_validate_json(last_content)
+                return validate_model_json(last_content, response_model)
             except ValidationError as exc:
                 last_validation_error = exc
-                last_was_truncated = _validation_indicates_truncation(
-                    last_content, exc, metrics
-                )
+                last_was_truncated = _validation_indicates_truncation(last_content, exc, metrics)
                 self._emit(
                     "schema_validation_failed",
                     attempt=attempt + 1,

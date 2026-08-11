@@ -1,5 +1,5 @@
 #define MyAppName "Minutas ASH"
-#define MyAppVersion "2.3.3"
+#define MyAppVersion "2.3.4"
 #define MyAppPublisher "ASH Ingeniería y Proyectos"
 #define MyAppExeName "MinutasASH.exe"
 
@@ -17,7 +17,7 @@ DefaultGroupName=ASH
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 OutputDir=..\dist_installer
-OutputBaseFilename=MinutasASH_Setup_2.3.3_Online
+OutputBaseFilename=MinutasASH_Setup_2.3.4_Online
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
@@ -41,9 +41,12 @@ Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "Crear acceso directo en el escritorio"; GroupDescription: "Accesos directos:"; Flags: checkedonce
+Name: "whisper"; Description: "Transcripción local de audio y video (Whisper CPU + modelo base, 235 MB)"; GroupDescription: "Componentes opcionales:"; Flags: unchecked
 
 [Files]
 Source: "..\dist\MinutasASH\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\dist_whisper\WhisperWorker.exe"; DestDir: "{localappdata}\MinutasASH\components\whisper"; Flags: ignoreversion; Tasks: whisper
+Source: "..\.runtime\whisper-package\MinutasASH\models\whisper\*"; DestDir: "{localappdata}\MinutasASH\models\whisper"; Flags: ignoreversion recursesubdirs createallsubdirs; Tasks: whisper
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"

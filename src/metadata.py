@@ -6,6 +6,7 @@ from datetime import date, datetime
 from pathlib import Path
 
 from src.models import Attendee, MeetingMetadata
+from src.ui_productivity import unique_person_labels
 
 
 def load_metadata(path: str | Path | None) -> MeetingMetadata:
@@ -37,7 +38,7 @@ def enrich_attendees(
 ) -> MeetingMetadata:
     known = {item.name.casefold(): item for item in metadata.attendees}
     if auto_add:
-        for speaker in speakers:
+        for speaker in unique_person_labels(speakers):
             if speaker.casefold() not in known:
                 metadata.attendees.append(
                     Attendee(

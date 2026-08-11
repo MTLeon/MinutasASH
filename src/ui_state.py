@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import contextlib
+import ctypes
+import os
 import re
 import tkinter as tk
 from typing import Any, cast
@@ -10,6 +12,48 @@ from typing import Any, cast
 from src.settings import save_settings_dict
 
 _GEOMETRY_RE = re.compile(r"^(?P<w>\d+)x(?P<h>\d+)(?P<x>[+-]\d+)?(?P<y>[+-]\d+)?$")
+
+
+def centered_geometry(
+    geometry: str | None,
+    default: str,
+    min_size: tuple[int, int],
+    parent_bounds: tuple[int, int, int, int],
+    desktop_bounds: tuple[int, int, int, int],
+) -> str:
+    """Conserva el tamaño guardado y centra el diálogo sobre su ventana padre."""
+    candidate = (geometry or "").strip() or default
+    match = _GEOMETRY_RE.match(candidate) or _GEOMETRY_RE.match(default)
+    if not match:  # pragma: no cover - contrato interno
+        raise ValueError("La geometría predeterminada no es válida.")
+    min_w, min_h = min_size
+    desktop_x, desktop_y, desktop_w, desktop_h = desktop_bounds
+    width = min(max(int(match.group("w")), min_w), max(1, desktop_w))
+    height = min(max(int(match.group("h")), min_h), max(1, desktop_h))
+    parent_x, parent_y, parent_w, parent_h = parent_bounds
+    x = parent_x + (parent_w - width) // 2
+    y = parent_y + (parent_h - height) // 2
+    x = min(max(x, desktop_x), desktop_x + max(0, desktop_w - width))
+    y = min(max(y, desktop_y), desktop_y + max(0, desktop_h - height))
+    return f"{width}x{height}{x:+d}{y:+d}"
+
+
+def _virtual_desktop_bounds(window: tk.Misc) -> tuple[int, int, int, int]:
+    if os.name == "nt":
+        with contextlib.suppress(OSError, AttributeError):
+            user32 = ctypes.windll.user32
+            return (
+                int(user32.GetSystemMetrics(76)),
+                int(user32.GetSystemMetrics(77)),
+                max(1, int(user32.GetSystemMetrics(78))),
+                max(1, int(user32.GetSystemMetrics(79))),
+            )
+    return (
+        int(window.winfo_vrootx()),
+        int(window.winfo_vrooty()),
+        max(1, int(window.winfo_vrootwidth())),
+        max(1, int(window.winfo_vrootheight())),
+    )
 
 
 def normalized_geometry(
@@ -75,8 +119,26 @@ def configure_resizable_window(
 
     def apply_geometry() -> None:
         try:
-            screen = (window.winfo_screenwidth(), window.winfo_screenheight())
-            window.geometry(normalized_geometry(saved, default_geometry, min_size, screen))
+            if parent is not None:
+                parent.update_idletasks()
+                parent_bounds = (
+                    parent.winfo_rootx(),
+                    parent.winfo_rooty(),
+                    parent.winfo_width(),
+                    parent.winfo_height(),
+                )
+                window.geometry(
+                    centered_geometry(
+                        saved,
+                        default_geometry,
+                        min_size,
+                        parent_bounds,
+                        _virtual_desktop_bounds(window),
+                    )
+                )
+            else:
+                screen = (window.winfo_screenwidth(), window.winfo_screenheight())
+                window.geometry(normalized_geometry(saved, default_geometry, min_size, screen))
         except tk.TclError:
             return
 

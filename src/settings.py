@@ -20,8 +20,8 @@ class AppSettings(BaseModel):
 
     model_config = ConfigDict(extra="ignore", str_strip_whitespace=True)
 
-    app_version: str = "2.3.3"
-    release_sequence: int = Field(default=2003003, ge=1)
+    app_version: str = "2.3.4"
+    release_sequence: int = Field(default=2003004, ge=1)
     product_generation: int = Field(default=2, ge=1)
     legacy_predecessor: str = "2.3.2"
     schema_version: int = Field(default=6, ge=1)
@@ -69,15 +69,14 @@ class AppSettings(BaseModel):
     # y, si no hay ninguna, prepara el runtime administrado por Minutas ASH.
     runtime_mode: Literal["auto", "managed", "system"] = "auto"
     managed_runtime_url: str = (
-        "https://github.com/ollama/ollama/releases/latest/download/"
-        "ollama-windows-amd64.zip"
+        "https://github.com/ollama/ollama/releases/latest/download/ollama-windows-amd64.zip"
     )
     managed_runtime_filename: str = "ollama-windows-amd64.zip"
     managed_runtime_minimum_bytes: int = Field(default=50 * 1024**2, ge=1024**2)
     managed_models_subdir: str = "models"
 
     # Apariencia y accesibilidad.
-    appearance_theme: Literal["system", "light", "dark"] = "system"
+    appearance_theme: Literal["system", "light", "dark", "high_contrast"] = "system"
     appearance_accent_color: str = "#1F4E78"
     appearance_font_family: str = "Segoe UI"
     appearance_font_size: int = Field(default=10, ge=8, le=18)
@@ -97,6 +96,7 @@ class AppSettings(BaseModel):
         "ollama_local", "azure_openai", "openai", "anthropic", "gemini", "openai_compatible"
     ] = "ollama_local"
     remote_timeout_seconds: int = Field(default=300, ge=30, le=3600)
+    remote_input_cost_per_million_usd: float = Field(default=0.0, ge=0.0)
     confirm_remote_processing: bool = True
     fallback_to_local: bool = True
     azure_openai_base_url: str = ""
@@ -125,7 +125,9 @@ class AppSettings(BaseModel):
     essential_recent_limit: int = Field(default=5, ge=3, le=10)
     quick_detect_participants: bool = True
     review_focus_attention: bool = True
-    default_meeting_type: Literal["cliente", "interna", "kom", "seguimiento", "cartera", "otra"] = "cliente"
+    default_meeting_type: Literal["cliente", "interna", "kom", "seguimiento", "cartera", "otra"] = (
+        "cliente"
+    )
 
     # Flujo guiado, revisión y numeración documental.
     guided_mode: bool = True
@@ -140,11 +142,33 @@ class AppSettings(BaseModel):
     default_minute_taker: str = ""
     remember_last_minute_taker: bool = True
     flexible_sources_enabled: bool = True
+    whisper_model: Literal["base", "small"] = "base"
+    transcription_language: str = "es"
+    diarization_enabled: bool = False
+    diarization_worker_path: str = ""
+    transcription_quality_warning: bool = True
     history_trash_retention_days: int = Field(default=30, ge=1, le=3650)
     history_exclude_tests_from_dashboard: bool = True
     learning_capture_enabled: bool = True
     learning_retrieval_enabled: bool = True
     learning_retrieval_limit: int = Field(default=3, ge=1, le=10)
+
+    # Automatizacion de bandeja y revision por excepciones.
+    inbox_automation_enabled: bool = False
+    inbox_auto_start_processing: bool = False
+    inbox_automation_max_retries: int = Field(default=3, ge=1, le=10)
+    review_by_exceptions: bool = False
+    review_auto_approval_threshold: float = Field(default=0.90, ge=0.70, le=1.0)
+    automation_auto_generate_document: bool = False
+    generate_pdf: bool = True
+    notify_on_completion: bool = True
+
+    # Importación opcional desde Microsoft Teams mediante permisos delegados.
+    # Client y tenant no son secretos; los tokens OAuth nunca se persisten.
+    teams_graph_enabled: bool = False
+    teams_graph_client_id: str = ""
+    teams_graph_tenant_id: str = "organizations"
+    teams_graph_timeout_seconds: int = Field(default=60, ge=15, le=300)
 
     # Plantillas y catálogos corporativos.
     template_selection_mode: Literal["automatic", "standard", "managed"] = "automatic"
@@ -231,13 +255,9 @@ class AppSettings(BaseModel):
     @model_validator(mode="after")
     def validate_processing_limits(self) -> AppSettings:
         if self.adaptive_timeout_max_seconds < self.adaptive_timeout_min_seconds:
-            raise ValueError(
-                "adaptive_timeout_max_seconds no puede ser menor que el mínimo."
-            )
+            raise ValueError("adaptive_timeout_max_seconds no puede ser menor que el mínimo.")
         if self.memory_critical_percent <= self.memory_warning_percent:
-            raise ValueError(
-                "El umbral crítico de memoria debe ser mayor que el de advertencia."
-            )
+            raise ValueError("El umbral crítico de memoria debe ser mayor que el de advertencia.")
         return self
 
     def as_dict(self) -> dict[str, Any]:

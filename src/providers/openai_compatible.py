@@ -5,13 +5,18 @@ from typing import TypeVar
 import requests
 from pydantic import BaseModel
 
-from src.providers.base import ProcessingProviderError
+from src.providers.base import ProcessingProviderError, RuntimeCancellableProvider
 from src.providers.http_common import post_json, validate_json_text
+from src.providers.schema_compat import (
+    is_schema_rejection,
+    json_fallback_prompt,
+    strict_object_schema,
+)
 
 T = TypeVar("T", bound=BaseModel)
 
 
-class OpenAICompatibleProvider:
+class OpenAICompatibleProvider(RuntimeCancellableProvider):
     provider_id = "openai_compatible"
     display_name = "Servidor compatible"
     is_remote = True
@@ -41,7 +46,9 @@ class OpenAICompatibleProvider:
                 timeout=min(self.timeout, 30),
             )
         except requests.RequestException as exc:
-            raise ProcessingProviderError(f"No fue posible conectar con el servidor: {exc}") from exc
+            raise ProcessingProviderError(
+                f"No fue posible conectar con el servidor: {exc}"
+            ) from exc
         if response.status_code >= 400:
             raise ProcessingProviderError(
                 f"El servidor rechazó la comprobación (HTTP {response.status_code})."
@@ -65,16 +72,35 @@ class OpenAICompatibleProvider:
                 "json_schema": {
                     "name": response_model.__name__,
                     "strict": True,
-                    "schema": response_model.model_json_schema(),
+                    "schema": strict_object_schema(response_model.model_json_schema()),
                 },
             },
         }
-        data = post_json(
-            f"{self.base_url}/chat/completions",
-            headers=self._headers,
-            payload=payload,
-            timeout=self.timeout,
-        )
+        try:
+            data = post_json(
+                f"{self.base_url}/chat/completions",
+                headers=self._headers,
+                payload=payload,
+                timeout=self.timeout,
+                cancelled=self._cancelled,
+            )
+        except ProcessingProviderError as exc:
+            if not is_schema_rejection(exc):
+                raise
+            fallback_payload = {
+                key: value for key, value in payload.items() if key != "response_format"
+            }
+            fallback_payload["messages"] = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": json_fallback_prompt(user_prompt, response_model)},
+            ]
+            data = post_json(
+                f"{self.base_url}/chat/completions",
+                headers=self._headers,
+                payload=fallback_payload,
+                timeout=self.timeout,
+                cancelled=self._cancelled,
+            )
         choices = data.get("choices") or []
         if not choices:
             raise ProcessingProviderError("El servidor no devolvió alternativas.")

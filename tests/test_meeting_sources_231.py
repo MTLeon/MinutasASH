@@ -30,8 +30,7 @@ class FlexibleMeetingSources231Tests(unittest.TestCase):
 
     def test_plain_continuation_is_not_lost(self):
         segments = parse_text_transcript(
-            "Mauricio: Debemos revisar el cierre técnico.\n"
-            "También falta el protocolo firmado."
+            "Mauricio: Debemos revisar el cierre técnico.\nTambién falta el protocolo firmado."
         )
         self.assertEqual(len(segments), 1)
         self.assertIn("También falta", segments[0].text)
@@ -51,9 +50,39 @@ class FlexibleMeetingSources231Tests(unittest.TestCase):
         combined = " ".join(segment.text for segment in source.segments)
         self.assertIn("orden de compra", combined)
 
+    def test_srt_source_preserves_timestamps(self):
+        with TemporaryDirectory() as temp:
+            path = Path(temp) / "reunion.srt"
+            path.write_text(
+                "1\n00:00:01,000 --> 00:00:05,000\nMauricio: Enviaré el informe.\n\n"
+                "2\n00:00:06,000 --> 00:00:09,000\nCliente: Lo revisaremos mañana.\n",
+                encoding="utf-8",
+            )
+            source = read_meeting_source(path)
+        self.assertEqual(source.source_type, "srt")
+        self.assertEqual(source.quality, "alta")
+        self.assertEqual(source.segments[0].start, "00:00:01.000")
+        self.assertEqual(source.segments[0].speaker, "Mauricio")
+
+    def test_pdf_source_uses_extracted_text(self):
+        with (
+            TemporaryDirectory() as temp,
+            patch(
+                "src.meeting_sources._read_pdf_text",
+                return_value="Mauricio: Enviaré el informe el lunes.",
+            ),
+        ):
+            path = Path(temp) / "reunion.pdf"
+            path.write_bytes(b"%PDF-placeholder")
+            source = read_meeting_source(path)
+        self.assertEqual(source.source_type, "pdf")
+        self.assertEqual(source.quality, "media")
+        self.assertIn("informe", source.segments[0].text)
+
     def test_manual_text_is_saved_as_a_local_source(self):
-        with TemporaryDirectory() as temp, patch(
-            "src.meeting_sources.drafts_dir", return_value=Path(temp)
+        with (
+            TemporaryDirectory() as temp,
+            patch("src.meeting_sources.drafts_dir", return_value=Path(temp)),
         ):
             source = create_text_source(
                 "Mauricio: Yo enviaré el informe el lunes.",
@@ -69,10 +98,12 @@ class FlexibleMeetingSources231Tests(unittest.TestCase):
         patterns = " ".join(pattern for _label, pattern in supported_filetypes())
         self.assertIn("*.mp3", patterns)
         self.assertIn("*.mp4", patterns)
+        self.assertIn("*.srt", patterns)
+        self.assertIn("*.pdf", patterns)
 
     def test_unknown_extension_is_rejected(self):
         with self.assertRaises(ValueError):
-            infer_source_type("reunion.pdf")
+            infer_source_type("reunion.exe")
 
 
 if __name__ == "__main__":

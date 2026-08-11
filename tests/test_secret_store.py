@@ -15,7 +15,9 @@ class SecretStoreTests(unittest.TestCase):
         )
 
     def test_environment_variable_name(self):
-        self.assertEqual(environment_variable("openai-compatible"), "MINUTAS_ASH_OPENAI_COMPATIBLE_API_KEY")
+        self.assertEqual(
+            environment_variable("openai-compatible"), "MINUTAS_ASH_OPENAI_COMPATIBLE_API_KEY"
+        )
 
     def test_environment_value_has_priority(self):
         name = environment_variable("openai")

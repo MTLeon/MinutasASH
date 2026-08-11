@@ -4,7 +4,11 @@ from typing import Any
 
 from src.providers.anthropic_messages import AnthropicMessagesProvider
 from src.providers.azure_openai_responses import AzureOpenAIResponsesProvider
-from src.providers.base import ProviderDescriptor, StructuredProcessingProvider
+from src.providers.base import (
+    ProviderCapabilities,
+    ProviderDescriptor,
+    StructuredProcessingProvider,
+)
 from src.providers.gemini_generate import GeminiGenerateProvider
 from src.providers.ollama_local import OllamaLocalProvider
 from src.providers.openai_compatible import OpenAICompatibleProvider
@@ -19,6 +23,13 @@ _DESCRIPTORS = [
         False,
         "Procesa la transcripción en el computador y puede funcionar sin Internet después de la preparación inicial.",
         "qwen3:8b",
+        ProviderCapabilities(
+            structured_output=True,
+            schema_fallback=True,
+            streaming=False,
+            offline=True,
+            sends_content_remotely=False,
+        ),
     ),
     ProviderDescriptor(
         "azure_openai",
@@ -136,7 +147,9 @@ def create_processing_provider(
         )
     if selected == "gemini":
         return GeminiGenerateProvider(
-            str(settings.get("gemini_base_url", "https://generativelanguage.googleapis.com/v1beta")),
+            str(
+                settings.get("gemini_base_url", "https://generativelanguage.googleapis.com/v1beta")
+            ),
             model,
             get_secret("gemini") or "",
             remote_timeout,

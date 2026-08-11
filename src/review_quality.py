@@ -48,6 +48,8 @@ def assess_item(item: MeetingItem) -> ItemAssessment:
             reasons.append("Falta confirmar plazo.")
     if not item.evidence:
         reasons.append("No posee referencia temporal.")
+    elif item.evidence_verified is False:
+        reasons.append("La referencia temporal no respalda claramente el punto.")
 
     if status != "aprobado" and (origin == "regla" or item.confidence < 0.70):
         return ItemAssessment("rojo", "Revisión prioritaria", tuple(reasons))
@@ -59,7 +61,9 @@ def assess_item(item: MeetingItem) -> ItemAssessment:
         )
     if status == "aprobado":
         return ItemAssessment("verde", "Aprobado", ())
-    return ItemAssessment("amarillo", "Pendiente de aprobación", ("El punto aún no ha sido aprobado.",))
+    return ItemAssessment(
+        "amarillo", "Pendiente de aprobación", ("El punto aún no ha sido aprobado.",)
+    )
 
 
 def summarize_review(items: list[MeetingItem]) -> ReviewSummary:

@@ -13,6 +13,7 @@ from src.backup_service import create_backup, restore_backup, verify_backup
 from src.catalog_io import create_import_template, export_catalog, import_catalog
 from src.catalog_models import ClientRecord, ContactRecord, OrganizationRecord, ProjectCatalogRecord
 from src.database import AppDatabase
+from src.learning_dataset import export_lora_datasets
 from src.runtime_paths import backups_dir, exports_dir, resource_path, templates_dir
 from src.template_service import TemplateService
 from src.ui_state import configure_resizable_window
@@ -72,7 +73,9 @@ class RecordDialog(tk.Toplevel):
         buttons = ttk.Frame(frame)
         buttons.grid(row=len(fields), column=0, columnspan=2, sticky="e", pady=(14, 0))
         ttk.Button(buttons, text="Cancelar", command=self.destroy).pack(side="left")
-        ttk.Button(buttons, text="Guardar", style="Primary.TButton", command=self._save).pack(side="left", padx=(8, 0))
+        ttk.Button(buttons, text="Guardar", style="Primary.TButton", command=self._save).pack(
+            side="left", padx=(8, 0)
+        )
         self.bind("<Return>", lambda _event: self._save())
         self.bind("<Escape>", lambda _event: self.destroy())
         self.grab_set()
@@ -120,7 +123,9 @@ class TemplateInstallDialog(tk.Toplevel):
             box.columnconfigure(0, weight=1)
             ttk.Entry(box, textvariable=self.vars[key], width=52).grid(row=0, column=0, sticky="ew")
             if key == "source":
-                ttk.Button(box, text="Examinar...", command=self._browse).grid(row=0, column=1, padx=(6, 0))
+                ttk.Button(box, text="Examinar...", command=self._browse).grid(
+                    row=0, column=1, padx=(6, 0)
+                )
         frame.columnconfigure(1, weight=1)
         ttk.Label(
             frame,
@@ -129,9 +134,11 @@ class TemplateInstallDialog(tk.Toplevel):
             wraplength=560,
         ).grid(row=len(fields), column=0, columnspan=2, sticky="w", pady=(8, 0))
         buttons = ttk.Frame(frame)
-        buttons.grid(row=len(fields)+1, column=0, columnspan=2, sticky="e", pady=(14, 0))
+        buttons.grid(row=len(fields) + 1, column=0, columnspan=2, sticky="e", pady=(14, 0))
         ttk.Button(buttons, text="Cancelar", command=self.destroy).pack(side="left")
-        ttk.Button(buttons, text="Instalar y validar", style="Primary.TButton", command=self._save).pack(side="left", padx=(8, 0))
+        ttk.Button(
+            buttons, text="Instalar y validar", style="Primary.TButton", command=self._save
+        ).pack(side="left", padx=(8, 0))
         self.grab_set()
 
     def _browse(self) -> None:
@@ -145,7 +152,9 @@ class TemplateInstallDialog(tk.Toplevel):
             messagebox.showwarning("Plantilla", "Seleccione un archivo Word válido.", parent=self)
             return
         if not data["template_key"] or not data["display_name"] or not data["version_label"]:
-            messagebox.showwarning("Plantilla", "Complete identificador, nombre y versión.", parent=self)
+            messagebox.showwarning(
+                "Plantilla", "Complete identificador, nombre y versión.", parent=self
+            )
             return
         self.result = data
         self.destroy()
@@ -218,13 +227,27 @@ class AdministrationCenter(tk.Toplevel):
         )
         combo.pack(side="left", padx=8)
         combo.bind("<<ComboboxSelected>>", lambda _event: self._on_catalog_selected())
-        ttk.Button(controls, text="Nuevo", command=self._new_catalog_record).pack(side="left", padx=(12, 4))
-        ttk.Button(controls, text="Editar", command=self._edit_catalog_record).pack(side="left", padx=4)
-        ttk.Button(controls, text="Activar / desactivar", command=self._toggle_catalog_record).pack(side="left", padx=4)
-        ttk.Button(controls, text="Importar", command=self._import_catalog).pack(side="right", padx=4)
-        ttk.Button(controls, text="Plantilla Excel", command=self._create_catalog_template).pack(side="right", padx=4)
-        ttk.Button(controls, text="Exportar", command=self._export_catalog).pack(side="right", padx=4)
-        ttk.Button(controls, text="Actualizar", command=self._refresh_catalog).pack(side="right", padx=4)
+        ttk.Button(controls, text="Nuevo", command=self._new_catalog_record).pack(
+            side="left", padx=(12, 4)
+        )
+        ttk.Button(controls, text="Editar", command=self._edit_catalog_record).pack(
+            side="left", padx=4
+        )
+        ttk.Button(controls, text="Activar / desactivar", command=self._toggle_catalog_record).pack(
+            side="left", padx=4
+        )
+        ttk.Button(controls, text="Importar", command=self._import_catalog).pack(
+            side="right", padx=4
+        )
+        ttk.Button(controls, text="Plantilla Excel", command=self._create_catalog_template).pack(
+            side="right", padx=4
+        )
+        ttk.Button(controls, text="Exportar", command=self._export_catalog).pack(
+            side="right", padx=4
+        )
+        ttk.Button(controls, text="Actualizar", command=self._refresh_catalog).pack(
+            side="right", padx=4
+        )
         search_box = ttk.Entry(controls, textvariable=self.catalog_search_var, width=24)
         search_box.pack(side="right", padx=(12, 4))
         ttk.Label(controls, text="Buscar").pack(side="right")
@@ -256,7 +279,11 @@ class AdministrationCenter(tk.Toplevel):
             rows = self.database.list_organizations(include_inactive=True)
         else:
             rows = self.database.list_projects()
-        term = self.catalog_search_var.get().strip().casefold() if hasattr(self, "catalog_search_var") else ""
+        term = (
+            self.catalog_search_var.get().strip().casefold()
+            if hasattr(self, "catalog_search_var")
+            else ""
+        )
         if not term:
             return rows
         return [
@@ -267,10 +294,38 @@ class AdministrationCenter(tk.Toplevel):
 
     def _catalog_columns(self, catalog: str) -> list[tuple[str, str, int]]:
         return {
-            "contacts": [("id", "ID", 50), ("name", "Nombre", 230), ("email", "Correo", 220), ("role", "Cargo", 170), ("organization", "Organización", 170), ("active", "Activo", 70)],
-            "clients": [("id", "ID", 50), ("legal_name", "Nombre legal", 250), ("short_name", "Nombre corto", 170), ("tax_id", "RUT", 120), ("primary_contact_name", "Contacto", 180), ("active", "Activo", 70)],
-            "organizations": [("id", "ID", 50), ("legal_name", "Nombre legal", 260), ("short_name", "Nombre corto", 180), ("tax_id", "RUT", 120), ("email", "Correo", 220), ("active", "Activo", 70)],
-            "projects": [("code", "Código", 100), ("description", "Descripción", 300), ("client", "Cliente", 190), ("project_manager", "Jefe de proyecto", 180), ("document_type", "Tipo", 80), ("active", "Activo", 70)],
+            "contacts": [
+                ("id", "ID", 50),
+                ("name", "Nombre", 230),
+                ("email", "Correo", 220),
+                ("role", "Cargo", 170),
+                ("organization", "Organización", 170),
+                ("active", "Activo", 70),
+            ],
+            "clients": [
+                ("id", "ID", 50),
+                ("legal_name", "Nombre legal", 250),
+                ("short_name", "Nombre corto", 170),
+                ("tax_id", "RUT", 120),
+                ("primary_contact_name", "Contacto", 180),
+                ("active", "Activo", 70),
+            ],
+            "organizations": [
+                ("id", "ID", 50),
+                ("legal_name", "Nombre legal", 260),
+                ("short_name", "Nombre corto", 180),
+                ("tax_id", "RUT", 120),
+                ("email", "Correo", 220),
+                ("active", "Activo", 70),
+            ],
+            "projects": [
+                ("code", "Código", 100),
+                ("description", "Descripción", 300),
+                ("client", "Cliente", 190),
+                ("project_manager", "Jefe de proyecto", 180),
+                ("document_type", "Tipo", 80),
+                ("active", "Activo", 70),
+            ],
         }[catalog]
 
     def _refresh_catalog(self) -> None:
@@ -305,19 +360,66 @@ class AdministrationCenter(tk.Toplevel):
 
     def _catalog_fields(self, catalog: str) -> list[tuple[str, str]]:
         return {
-            "contacts": [("name", "Nombre *"), ("initials", "Iniciales"), ("email", "Correo"), ("role", "Cargo"), ("organization_id", "Organización registrada"), ("client_id", "Cliente asociado"), ("organization", "Organización mostrada"), ("phone", "Teléfono"), ("notes", "Observaciones")],
-            "clients": [("legal_name", "Nombre legal *"), ("short_name", "Nombre corto"), ("organization_id", "Organización vinculada"), ("tax_id", "RUT"), ("address", "Dirección"), ("primary_contact_name", "Contacto principal"), ("primary_contact_email", "Correo principal"), ("primary_contact_phone", "Teléfono principal"), ("notes", "Observaciones")],
-            "organizations": [("legal_name", "Nombre legal *"), ("short_name", "Nombre corto"), ("tax_id", "RUT"), ("address", "Dirección"), ("email", "Correo"), ("phone", "Teléfono"), ("notes", "Observaciones")],
-            "projects": [("code", "Código *"), ("description", "Descripción"), ("client_id", "Cliente registrado"), ("client", "Cliente alternativo"), ("project_manager", "Jefe de proyecto"), ("approver", "Aprobador"), ("default_minute_taker", "Redactor habitual"), ("default_location", "Lugar habitual"), ("document_type", "Tipo documental"), ("discipline", "Disciplina"), ("template_version_id", "Plantilla predeterminada"), ("folder_path", "Carpeta documental")],
+            "contacts": [
+                ("name", "Nombre *"),
+                ("initials", "Iniciales"),
+                ("email", "Correo"),
+                ("role", "Cargo"),
+                ("organization_id", "Organización registrada"),
+                ("client_id", "Cliente asociado"),
+                ("organization", "Organización mostrada"),
+                ("phone", "Teléfono"),
+                ("notes", "Observaciones"),
+            ],
+            "clients": [
+                ("legal_name", "Nombre legal *"),
+                ("short_name", "Nombre corto"),
+                ("organization_id", "Organización vinculada"),
+                ("tax_id", "RUT"),
+                ("address", "Dirección"),
+                ("primary_contact_name", "Contacto principal"),
+                ("primary_contact_email", "Correo principal"),
+                ("primary_contact_phone", "Teléfono principal"),
+                ("notes", "Observaciones"),
+            ],
+            "organizations": [
+                ("legal_name", "Nombre legal *"),
+                ("short_name", "Nombre corto"),
+                ("tax_id", "RUT"),
+                ("address", "Dirección"),
+                ("email", "Correo"),
+                ("phone", "Teléfono"),
+                ("notes", "Observaciones"),
+            ],
+            "projects": [
+                ("code", "Código *"),
+                ("description", "Descripción"),
+                ("client_id", "Cliente registrado"),
+                ("client", "Cliente alternativo"),
+                ("project_manager", "Jefe de proyecto"),
+                ("approver", "Aprobador"),
+                ("default_minute_taker", "Redactor habitual"),
+                ("default_location", "Lugar habitual"),
+                ("document_type", "Tipo documental"),
+                ("discipline", "Disciplina"),
+                ("template_version_id", "Plantilla predeterminada"),
+                ("folder_path", "Carpeta documental"),
+            ],
         }[catalog]
 
     def _catalog_options(self, catalog: str) -> dict[str, list[tuple[str, object]]]:
         organizations = [
-            (f"{row.get('short_name') or row.get('legal_name')} [ID {row.get('id')}]", row.get("id"))
+            (
+                f"{row.get('short_name') or row.get('legal_name')} [ID {row.get('id')}]",
+                row.get("id"),
+            )
             for row in self.database.list_organizations()
         ]
         clients = [
-            (f"{row.get('short_name') or row.get('legal_name')} [ID {row.get('id')}]", row.get("id"))
+            (
+                f"{row.get('short_name') or row.get('legal_name')} [ID {row.get('id')}]",
+                row.get("id"),
+            )
             for row in self.database.list_clients()
         ]
         templates = [
@@ -362,7 +464,9 @@ class AdministrationCenter(tk.Toplevel):
         )
         self.wait_window(dialog)
         if dialog.result:
-            dialog.result["id" if self.current_catalog != "projects" else "code"] = row.get("id" if self.current_catalog != "projects" else "code")
+            dialog.result["id" if self.current_catalog != "projects" else "code"] = row.get(
+                "id" if self.current_catalog != "projects" else "code"
+            )
             dialog.result["active"] = bool(row.get("active", 1))
             self._save_catalog_values(dialog.result)
 
@@ -371,7 +475,9 @@ class AdministrationCenter(tk.Toplevel):
             if values.get("organization_id"):
                 organization = self.database.get_organization(int(values["organization_id"]))
                 if organization and self.current_catalog == "contacts":
-                    values["organization"] = organization.get("short_name") or organization.get("legal_name")
+                    values["organization"] = organization.get("short_name") or organization.get(
+                        "legal_name"
+                    )
             if values.get("client_id"):
                 client = self.database.get_client(int(values["client_id"]))
                 if client:
@@ -387,7 +493,9 @@ class AdministrationCenter(tk.Toplevel):
             elif self.current_catalog == "organizations":
                 self.database.upsert_organization(OrganizationRecord.model_validate(values))
             else:
-                self.database.upsert_project_profile(ProjectCatalogRecord.model_validate(values).model_dump())
+                self.database.upsert_project_profile(
+                    ProjectCatalogRecord.model_validate(values).model_dump()
+                )
             self._refresh_catalog()
             if self.refresh_callback:
                 self.refresh_callback()
@@ -416,7 +524,6 @@ class AdministrationCenter(tk.Toplevel):
             if self.refresh_callback:
                 self.refresh_callback()
 
-
     def _create_catalog_template(self) -> None:
         exports_dir().mkdir(parents=True, exist_ok=True)
         path = filedialog.asksaveasfilename(
@@ -440,7 +547,10 @@ class AdministrationCenter(tk.Toplevel):
             messagebox.showerror("Plantilla de importación", str(exc), parent=self)
 
     def _import_catalog(self) -> None:
-        path = filedialog.askopenfilename(parent=self, filetypes=[("Excel o CSV", "*.xlsx *.csv"), ("Excel", "*.xlsx"), ("CSV", "*.csv")])
+        path = filedialog.askopenfilename(
+            parent=self,
+            filetypes=[("Excel o CSV", "*.xlsx *.csv"), ("Excel", "*.xlsx"), ("CSV", "*.csv")],
+        )
         if not path:
             return
         try:
@@ -448,7 +558,9 @@ class AdministrationCenter(tk.Toplevel):
                 self.database,
                 self.current_catalog,
                 path,
-                duplicate_policy=str(self.app_config.get("catalog_import_duplicate_policy", "upsert")),
+                duplicate_policy=str(
+                    self.app_config.get("catalog_import_duplicate_policy", "upsert")
+                ),
             )
             detail = (
                 f"Importados o actualizados: {summary.imported}\n"
@@ -490,18 +602,37 @@ class AdministrationCenter(tk.Toplevel):
         tab.rowconfigure(1, weight=1)
         controls = ttk.Frame(tab)
         controls.grid(row=0, column=0, sticky="ew", pady=(0, 8))
-        ttk.Button(controls, text="Cargar plantilla Word", command=self._install_template).pack(side="left")
-        ttk.Button(controls, text="Abrir ejemplo", command=self._open_template_example).pack(side="left", padx=4)
-        ttk.Button(controls, text="Validar", command=self._validate_template).pack(side="left", padx=4)
-        ttk.Button(controls, text="Documento de prueba", command=self._test_template).pack(side="left", padx=4)
-        ttk.Button(controls, text="Activar", command=self._activate_template).pack(side="left", padx=4)
-        ttk.Button(controls, text="Retirar", command=self._retire_template).pack(side="left", padx=4)
-        ttk.Button(controls, text="Abrir carpeta", command=lambda: self._open_path(templates_dir())).pack(side="right")
+        ttk.Button(controls, text="Cargar plantilla Word", command=self._install_template).pack(
+            side="left"
+        )
+        ttk.Button(controls, text="Abrir ejemplo", command=self._open_template_example).pack(
+            side="left", padx=4
+        )
+        ttk.Button(controls, text="Validar", command=self._validate_template).pack(
+            side="left", padx=4
+        )
+        ttk.Button(controls, text="Documento de prueba", command=self._test_template).pack(
+            side="left", padx=4
+        )
+        ttk.Button(controls, text="Activar", command=self._activate_template).pack(
+            side="left", padx=4
+        )
+        ttk.Button(controls, text="Retirar", command=self._retire_template).pack(
+            side="left", padx=4
+        )
+        ttk.Button(
+            controls, text="Abrir carpeta", command=lambda: self._open_path(templates_dir())
+        ).pack(side="right")
         columns = ("id", "name", "version", "type", "state", "valid", "active")
         self.template_tree = ttk.Treeview(tab, columns=columns, show="headings")
         for key, label, width in (
-            ("id", "ID", 50), ("name", "Plantilla", 230), ("version", "Versión", 90),
-            ("type", "Tipo", 160), ("state", "Estado", 90), ("valid", "Válida", 80), ("active", "Activa", 70),
+            ("id", "ID", 50),
+            ("name", "Plantilla", 230),
+            ("version", "Versión", 90),
+            ("type", "Tipo", 160),
+            ("state", "Estado", 90),
+            ("valid", "Válida", 80),
+            ("active", "Activa", 70),
         ):
             self.template_tree.heading(key, text=label)
             self.template_tree.column(key, width=width, anchor="w")
@@ -523,14 +654,23 @@ class AdministrationCenter(tk.Toplevel):
             except json.JSONDecodeError:
                 valid = False
             self.template_tree.insert(
-                "", "end", iid=str(row["id"]),
-                values=(row["id"], row["display_name"], row["version_label"], row["document_type"], row["state"], "Sí" if valid else "No", "Sí" if row.get("is_active") else "No"),
+                "",
+                "end",
+                iid=str(row["id"]),
+                values=(
+                    row["id"],
+                    row["display_name"],
+                    row["version_label"],
+                    row["document_type"],
+                    row["state"],
+                    "Sí" if valid else "No",
+                    "Sí" if row.get("is_active") else "No",
+                ),
             )
 
     def _selected_template_id(self) -> int | None:
         selection = self.template_tree.selection()
         return int(selection[0]) if selection else None
-
 
     def _open_template_example(self) -> None:
         path = resource_path("plantillas/Plantilla_Marcadores_ASH_2.3.docx")
@@ -591,7 +731,9 @@ class AdministrationCenter(tk.Toplevel):
             return
         try:
             path = self.template_service.create_test_document(version_id)
-            messagebox.showinfo("Documento de prueba", f"Se creó el documento:\n\n{path}", parent=self)
+            messagebox.showinfo(
+                "Documento de prueba", f"Se creó el documento:\n\n{path}", parent=self
+            )
             self._open_path(path)
             self._refresh_templates()
         except Exception as exc:
@@ -607,7 +749,11 @@ class AdministrationCenter(tk.Toplevel):
             self._refresh_templates()
             if self.refresh_callback:
                 self.refresh_callback()
-            messagebox.showinfo("Plantilla activa", "La versión se utilizará en documentos nuevos según las reglas de selección.", parent=self)
+            messagebox.showinfo(
+                "Plantilla activa",
+                "La versión se utilizará en documentos nuevos según las reglas de selección.",
+                parent=self,
+            )
         except Exception as exc:
             messagebox.showerror("Activación", str(exc), parent=self)
 
@@ -616,7 +762,11 @@ class AdministrationCenter(tk.Toplevel):
         if not version_id:
             messagebox.showinfo("Plantillas", "Seleccione una versión.", parent=self)
             return
-        if messagebox.askyesno("Retirar plantilla", "Los documentos históricos no cambiarán. ¿Retirar esta versión?", parent=self):
+        if messagebox.askyesno(
+            "Retirar plantilla",
+            "Los documentos históricos no cambiarán. ¿Retirar esta versión?",
+            parent=self,
+        ):
             self.template_service.retire(version_id)
             self._refresh_templates()
 
@@ -634,10 +784,18 @@ class AdministrationCenter(tk.Toplevel):
         ).pack(anchor="w", pady=(6, 14))
         buttons = ttk.Frame(tab)
         buttons.pack(anchor="w")
-        ttk.Button(buttons, text="Crear respaldo", style="Primary.TButton", command=self._create_backup).pack(side="left")
-        ttk.Button(buttons, text="Verificar respaldo", command=self._verify_backup).pack(side="left", padx=8)
-        ttk.Button(buttons, text="Restaurar respaldo", command=self._restore_backup).pack(side="left")
-        ttk.Button(buttons, text="Abrir carpeta", command=lambda: self._open_path(backups_dir())).pack(side="left", padx=8)
+        ttk.Button(
+            buttons, text="Crear respaldo", style="Primary.TButton", command=self._create_backup
+        ).pack(side="left")
+        ttk.Button(buttons, text="Verificar respaldo", command=self._verify_backup).pack(
+            side="left", padx=8
+        )
+        ttk.Button(buttons, text="Restaurar respaldo", command=self._restore_backup).pack(
+            side="left"
+        )
+        ttk.Button(
+            buttons, text="Abrir carpeta", command=lambda: self._open_path(backups_dir())
+        ).pack(side="left", padx=8)
         self.backup_text = ScrolledText(tab, height=18, wrap="word")
         self.backup_text.pack(fill="both", expand=True, pady=(16, 0))
         self._write_backup_text("No se ha ejecutado ninguna operación en esta sesión.")
@@ -650,25 +808,33 @@ class AdministrationCenter(tk.Toplevel):
 
     def _create_backup(self) -> None:
         try:
-            path = create_backup(self.database, app_version=str(self.app_config.get("app_version") or ""))
+            path = create_backup(
+                self.database, app_version=str(self.app_config.get("app_version") or "")
+            )
             self._write_backup_text(f"Respaldo creado correctamente:\n{path}")
             messagebox.showinfo("Respaldo", f"Respaldo creado:\n\n{path}", parent=self)
         except Exception as exc:
             messagebox.showerror("Respaldo", str(exc), parent=self)
 
     def _verify_backup(self) -> None:
-        path = filedialog.askopenfilename(parent=self, initialdir=backups_dir(), filetypes=[("Respaldo Minutas ASH", "*.zip")])
+        path = filedialog.askopenfilename(
+            parent=self, initialdir=backups_dir(), filetypes=[("Respaldo Minutas ASH", "*.zip")]
+        )
         if not path:
             return
         try:
             manifest = verify_backup(path)
             self._write_backup_text(json.dumps(manifest, ensure_ascii=False, indent=2))
-            messagebox.showinfo("Respaldo válido", "El respaldo superó la verificación de integridad.", parent=self)
+            messagebox.showinfo(
+                "Respaldo válido", "El respaldo superó la verificación de integridad.", parent=self
+            )
         except Exception as exc:
             messagebox.showerror("Verificación", str(exc), parent=self)
 
     def _restore_backup(self) -> None:
-        path = filedialog.askopenfilename(parent=self, initialdir=backups_dir(), filetypes=[("Respaldo Minutas ASH", "*.zip")])
+        path = filedialog.askopenfilename(
+            parent=self, initialdir=backups_dir(), filetypes=[("Respaldo Minutas ASH", "*.zip")]
+        )
         if not path:
             return
         if not messagebox.askyesno(
@@ -680,7 +846,11 @@ class AdministrationCenter(tk.Toplevel):
         try:
             manifest = restore_backup(path)
             self._write_backup_text(json.dumps(manifest, ensure_ascii=False, indent=2))
-            messagebox.showinfo("Restauración terminada", "Reinicie Minutas ASH para cargar los datos restaurados.", parent=self)
+            messagebox.showinfo(
+                "Restauración terminada",
+                "Reinicie Minutas ASH para cargar los datos restaurados.",
+                parent=self,
+            )
         except Exception as exc:
             messagebox.showerror("Restauración", str(exc), parent=self)
 
@@ -688,12 +858,18 @@ class AdministrationCenter(tk.Toplevel):
         tab = self.tab_audit
         tab.columnconfigure(0, weight=1)
         tab.rowconfigure(1, weight=1)
-        ttk.Button(tab, text="Actualizar", command=self._refresh_audit).grid(row=0, column=0, sticky="e", pady=(0, 8))
+        ttk.Button(tab, text="Actualizar", command=self._refresh_audit).grid(
+            row=0, column=0, sticky="e", pady=(0, 8)
+        )
         columns = ("date", "user", "action", "entity", "id", "machine")
         self.audit_tree = ttk.Treeview(tab, columns=columns, show="headings")
         for key, label, width in (
-            ("date", "Fecha", 160), ("user", "Usuario", 140), ("action", "Acción", 110),
-            ("entity", "Entidad", 150), ("id", "ID", 120), ("machine", "Equipo", 150),
+            ("date", "Fecha", 160),
+            ("user", "Usuario", 140),
+            ("action", "Acción", 110),
+            ("entity", "Entidad", 150),
+            ("id", "ID", 120),
+            ("machine", "Equipo", 150),
         ):
             self.audit_tree.heading(key, text=label)
             self.audit_tree.column(key, width=width, anchor="w")
@@ -704,13 +880,26 @@ class AdministrationCenter(tk.Toplevel):
             return
         self.audit_tree.delete(*self.audit_tree.get_children())
         for row in self.database.list_audit_events(500):
-            self.audit_tree.insert("", "end", values=(row.get("created_at"), row.get("windows_user"), row.get("action"), row.get("entity_type"), row.get("entity_id") or "", row.get("machine_name")))
+            self.audit_tree.insert(
+                "",
+                "end",
+                values=(
+                    row.get("created_at"),
+                    row.get("windows_user"),
+                    row.get("action"),
+                    row.get("entity_type"),
+                    row.get("entity_id") or "",
+                    row.get("machine_name"),
+                ),
+            )
 
     def _build_learning(self) -> None:
         tab = self.tab_learning
         tab.columnconfigure(0, weight=1)
         tab.rowconfigure(2, weight=1)
-        ttk.Label(tab, text="Aprendizaje supervisado local", style="Title.TLabel").grid(row=0, column=0, sticky="w")
+        ttk.Label(tab, text="Aprendizaje supervisado local", style="Title.TLabel").grid(
+            row=0, column=0, sticky="w"
+        )
         self.learning_summary_var = tk.StringVar(value="Sin datos")
         ttk.Label(
             tab,
@@ -720,7 +909,9 @@ class AdministrationCenter(tk.Toplevel):
         ).grid(row=1, column=0, sticky="w", pady=(5, 10))
 
         columns = ("term", "variants", "category", "project", "active")
-        self.learning_terms_tree = ttk.Treeview(tab, columns=columns, show="headings", selectmode="browse")
+        self.learning_terms_tree = ttk.Treeview(
+            tab, columns=columns, show="headings", selectmode="browse"
+        )
         for key, label, width in (
             ("term", "Término correcto", 220),
             ("variants", "Variantes de transcripción", 360),
@@ -733,9 +924,19 @@ class AdministrationCenter(tk.Toplevel):
         self.learning_terms_tree.grid(row=2, column=0, sticky="nsew")
         actions = ttk.Frame(tab)
         actions.grid(row=3, column=0, sticky="ew", pady=(10, 0))
-        ttk.Button(actions, text="Agregar término", command=self._add_learning_term).pack(side="left")
-        ttk.Button(actions, text="Activar / desactivar", command=self._toggle_learning_term).pack(side="left", padx=6)
+        ttk.Button(actions, text="Agregar término", command=self._add_learning_term).pack(
+            side="left"
+        )
+        ttk.Button(actions, text="Activar / desactivar", command=self._toggle_learning_term).pack(
+            side="left", padx=6
+        )
         ttk.Button(actions, text="Actualizar", command=self._refresh_learning).pack(side="left")
+        ttk.Button(actions, text="Excluir ejemplo", command=self._exclude_learning_sample).pack(
+            side="left", padx=(12, 6)
+        )
+        ttk.Button(
+            actions, text="Exportar dataset LoRA", command=self._export_learning_dataset
+        ).pack(side="left")
         ttk.Label(
             actions,
             text="Las correcciones aprobadas se almacenan localmente; no modifican automáticamente el modelo.",
@@ -746,26 +947,43 @@ class AdministrationCenter(tk.Toplevel):
         canonical = simpledialog.askstring("Diccionario técnico", "Término correcto:", parent=self)
         if not canonical or not canonical.strip():
             return
-        variants_text = simpledialog.askstring(
-            "Diccionario técnico",
-            "Variantes separadas por coma (ej.: PLC next, pese ele next):",
-            parent=self,
-        ) or ""
-        category = simpledialog.askstring(
-            "Diccionario técnico", "Categoría (equipo, persona, sigla, documento, etc.):", parent=self
-        ) or ""
-        project = simpledialog.askstring(
-            "Diccionario técnico", "Proyecto específico, o deje vacío para uso general:", parent=self
-        ) or ""
+        variants_text = (
+            simpledialog.askstring(
+                "Diccionario técnico",
+                "Variantes separadas por coma (ej.: PLC next, pese ele next):",
+                parent=self,
+            )
+            or ""
+        )
+        category = (
+            simpledialog.askstring(
+                "Diccionario técnico",
+                "Categoría (equipo, persona, sigla, documento, etc.):",
+                parent=self,
+            )
+            or ""
+        )
+        project = (
+            simpledialog.askstring(
+                "Diccionario técnico",
+                "Proyecto específico, o deje vacío para uso general:",
+                parent=self,
+            )
+            or ""
+        )
         variants = [item.strip() for item in variants_text.split(",") if item.strip()]
         try:
-            self.database.add_technical_term(canonical.strip(), variants, category.strip() or None, project.strip() or None)
+            self.database.add_technical_term(
+                canonical.strip(), variants, category.strip() or None, project.strip() or None
+            )
             self._refresh_learning()
         except Exception as exc:
             messagebox.showerror("Diccionario técnico", str(exc), parent=self)
 
     def _toggle_learning_term(self) -> None:
-        selected = self.learning_terms_tree.selection() if hasattr(self, "learning_terms_tree") else ()
+        selected = (
+            self.learning_terms_tree.selection() if hasattr(self, "learning_terms_tree") else ()
+        )
         if not selected:
             messagebox.showinfo("Diccionario técnico", "Seleccione un término.", parent=self)
             return
@@ -776,6 +994,66 @@ class AdministrationCenter(tk.Toplevel):
             return
         self.database.set_technical_term_active(term_id, not bool(row.get("active")))
         self._refresh_learning()
+
+    def _exclude_learning_sample(self) -> None:
+        meeting_id = simpledialog.askinteger(
+            "Excluir ejemplo",
+            "ID interno de la minuta que no debe usarse para aprendizaje:",
+            parent=self,
+            minvalue=1,
+        )
+        if not meeting_id:
+            return
+        reason = simpledialog.askstring(
+            "Excluir ejemplo",
+            "Motivo de exclusión:",
+            parent=self,
+        )
+        try:
+            self.database.set_learning_sample_approved(meeting_id, False, reason)
+            self._refresh_learning()
+            messagebox.showinfo(
+                "Aprendizaje",
+                "El ejemplo quedó excluido. La minuta original no fue eliminada.",
+                parent=self,
+            )
+        except Exception as exc:
+            messagebox.showerror("Aprendizaje", str(exc), parent=self)
+
+    def _export_learning_dataset(self) -> None:
+        destination = filedialog.askdirectory(
+            parent=self,
+            title="Carpeta para dataset LoRA",
+            initialdir=exports_dir(),
+        )
+        if not destination:
+            return
+        client = simpledialog.askstring(
+            "Dataset LoRA",
+            "Cliente específico (vacío exporta todos en archivos separados):",
+            parent=self,
+        )
+        only_anonymized = messagebox.askyesno(
+            "Dataset LoRA",
+            "¿Exportar solamente ejemplos marcados como anonimizados?",
+            parent=self,
+        )
+        try:
+            manifest = export_lora_datasets(
+                self.database,
+                destination,
+                client=(client or "").strip() or None,
+                require_anonymized=only_anonymized,
+            )
+            records = sum(int(row["records"]) for row in manifest["files"])
+            messagebox.showinfo(
+                "Dataset LoRA",
+                f"Exportación completada: {records} ejemplo(s) en "
+                f"{len(manifest['files'])} archivo(s) separados por cliente.",
+                parent=self,
+            )
+        except Exception as exc:
+            messagebox.showerror("Dataset LoRA", str(exc), parent=self)
 
     def _refresh_learning(self) -> None:
         if not hasattr(self, "learning_terms_tree"):
@@ -794,9 +1072,16 @@ class AdministrationCenter(tk.Toplevel):
             except Exception:
                 variants = row.get("variants_json") or ""
             self.learning_terms_tree.insert(
-                "", "end", iid=str(row["id"]),
-                values=(row.get("canonical_term"), variants, row.get("category") or "",
-                        row.get("project_code") or "General", "Activo" if row.get("active") else "Inactivo"),
+                "",
+                "end",
+                iid=str(row["id"]),
+                values=(
+                    row.get("canonical_term"),
+                    variants,
+                    row.get("category") or "",
+                    row.get("project_code") or "General",
+                    "Activo" if row.get("active") else "Inactivo",
+                ),
             )
 
     def _build_repository(self) -> None:
@@ -810,14 +1095,18 @@ class AdministrationCenter(tk.Toplevel):
         ).pack(anchor="w", pady=(6, 16))
         table = ttk.Frame(tab)
         table.pack(anchor="w", fill="x")
-        for row, (label, value) in enumerate((
-            ("Repositorio activo", "SQLite local"),
-            ("Esquema detectado", str(self.database.get_schema_version())),
-            ("Integridad", self.database.integrity_check()[1]),
-            ("SQL Server", "Contrato preparado; activación planificada para la línea 2.4.x"),
-        )):
+        for row, (label, value) in enumerate(
+            (
+                ("Repositorio activo", "SQLite local"),
+                ("Esquema detectado", str(self.database.get_schema_version())),
+                ("Integridad", self.database.integrity_check()[1]),
+                ("SQL Server", "Contrato preparado; activación planificada para la línea 2.4.x"),
+            )
+        ):
             ttk.Label(table, text=label).grid(row=row, column=0, sticky="w", padx=(0, 18), pady=6)
-            ttk.Label(table, text=value, style="Section.TLabel" if row == 0 else "Muted.TLabel").grid(row=row, column=1, sticky="w", pady=6)
+            ttk.Label(
+                table, text=value, style="Section.TLabel" if row == 0 else "Muted.TLabel"
+            ).grid(row=row, column=1, sticky="w", pady=6)
 
     def _refresh_all(self) -> None:
         self._refresh_catalog()
@@ -830,6 +1119,7 @@ class AdministrationCenter(tk.Toplevel):
         import os
         import subprocess
         import sys
+
         target = str(path)
         if sys.platform.startswith("win"):
             os.startfile(target)
@@ -839,7 +1129,9 @@ class AdministrationCenter(tk.Toplevel):
             subprocess.Popen(["xdg-open", target])
 
 
-def open_administration(parent, database: AppDatabase, config: dict, refresh_callback=None) -> AdministrationCenter:
+def open_administration(
+    parent, database: AppDatabase, config: dict, refresh_callback=None
+) -> AdministrationCenter:
     window = AdministrationCenter(parent, database, config, refresh_callback)
     window.grab_set()
     return window

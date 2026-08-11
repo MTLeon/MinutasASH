@@ -5,6 +5,8 @@ from dataclasses import asdict, dataclass
 from html import unescape
 from pathlib import Path
 
+from src.ui_productivity import unique_person_labels
+
 TIMESTAMP_RE = re.compile(
     r"(?P<start>\d{2}:\d{2}(?::\d{2})?[.,]\d{3})\s*-->\s*"
     r"(?P<end>\d{2}:\d{2}(?::\d{2})?[.,]\d{3})"
@@ -133,23 +135,11 @@ def merge_adjacent_segments(
 
 
 def unique_speakers(segments: list[TranscriptSegment]) -> list[str]:
-    result: list[str] = []
-    seen: set[str] = set()
-    for segment in segments:
-        speaker = segment.speaker.strip()
-        if not speaker or speaker == "Hablante no identificado":
-            continue
-        key = speaker.casefold()
-        if key not in seen:
-            seen.add(key)
-            result.append(speaker)
-    return result
+    return unique_person_labels(segment.speaker for segment in segments)
 
 
 def normalized_transcript(segments: list[TranscriptSegment]) -> str:
-    return "\n".join(
-        f"[{item.start}] {item.speaker}: {item.text}" for item in segments
-    )
+    return "\n".join(f"[{item.start}] {item.speaker}: {item.text}" for item in segments)
 
 
 def split_transcript(
@@ -167,7 +157,7 @@ def split_transcript(
         line = f"[{segment.start}] {segment.speaker}: {segment.text}"
         if current and current_size + len(line) + 1 > max_chars:
             chunks.append("\n".join(current))
-            overlap = current[-max(overlap_segments, 0):] if overlap_segments else []
+            overlap = current[-max(overlap_segments, 0) :] if overlap_segments else []
             current = list(overlap)
             current_size = sum(len(item) + 1 for item in current)
         current.append(line)

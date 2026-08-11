@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 
 from src.models import ChunkAnalysis, MinuteAnalysis
@@ -56,17 +57,26 @@ Reglas obligatorias:
 """
 
 
+PROMPT_VERSION = "2.3.3-evaluation-1"
+
+
+def prompt_identity() -> dict[str, str]:
+    """Return stable prompt provenance for evaluation and audit records."""
+    digest = hashlib.sha256(SYSTEM_PROMPT.encode("utf-8")).hexdigest()
+    return {"version": PROMPT_VERSION, "sha256": digest}
+
+
 def _metadata_context(metadata: dict) -> str:
     return f"""\
-- Tipo de reunión: {metadata.get('meeting_type') or 'no indicado'}
-- Número: {metadata.get('minute_number') or 'no indicado'}
-- Materia: {metadata.get('matter') or 'no indicada'}
-- Proyecto: {metadata.get('project_code') or 'no indicado'}
-- Descripción de proyecto: {metadata.get('project_description') or 'no indicada'}
-- Cliente: {metadata.get('client') or 'no indicado'}
-- Fecha de reunión: {metadata.get('meeting_date') or 'no indicada'}
-- Tipo de fuente: {metadata.get('source_type') or 'vtt'}
-- Calidad de fuente: {metadata.get('source_quality') or 'alta'}
+- Tipo de reunión: {metadata.get("meeting_type") or "no indicado"}
+- Número: {metadata.get("minute_number") or "no indicado"}
+- Materia: {metadata.get("matter") or "no indicada"}
+- Proyecto: {metadata.get("project_code") or "no indicado"}
+- Descripción de proyecto: {metadata.get("project_description") or "no indicada"}
+- Cliente: {metadata.get("client") or "no indicado"}
+- Fecha de reunión: {metadata.get("meeting_date") or "no indicada"}
+- Tipo de fuente: {metadata.get("source_type") or "vtt"}
+- Calidad de fuente: {metadata.get("source_quality") or "alta"}
 """
 
 
@@ -122,7 +132,7 @@ def analyze_chunks(
         prompt = f"""\
 Analiza este bloque de una transcripción de Microsoft Teams.
 
-Fecha conocida de la reunión: {meeting_date or 'no indicada'}.
+Fecha conocida de la reunión: {meeting_date or "no indicada"}.
 Contexto corporativo aprobado (referencia de vocabulario y patrones; no aporta hechos):
 {knowledge_context or "Sin vocabulario adicional."}
 

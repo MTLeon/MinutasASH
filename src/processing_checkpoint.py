@@ -37,12 +37,8 @@ class ProcessingCheckpoint:
     split_count: int = 0
     consolidation_levels: list[dict[str, Any]] = field(default_factory=list)
     status: str = "in_progress"
-    created_at: str = field(
-        default_factory=lambda: datetime.now(UTC).isoformat()
-    )
-    updated_at: str = field(
-        default_factory=lambda: datetime.now(UTC).isoformat()
-    )
+    created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
+    updated_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -82,8 +78,7 @@ class ProcessingCheckpoint:
                 for key, value in dict(payload.get("durations") or {}).items()
             },
             retries={
-                str(key): int(value)
-                for key, value in dict(payload.get("retries") or {}).items()
+                str(key): int(value) for key, value in dict(payload.get("retries") or {}).items()
             },
             split_count=int(payload.get("split_count") or 0),
             consolidation_levels=list(payload.get("consolidation_levels") or []),

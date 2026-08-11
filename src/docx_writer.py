@@ -207,9 +207,7 @@ def generate_docx(
         description = " — ".join(item for item in fields if item)
         document.add_paragraph(description or "Información incompleta.")
         if minute.next_meeting.evidence:
-            document.add_paragraph(
-                f"Evidencia: {minute.next_meeting.evidence}"
-            )
+            document.add_paragraph(f"Evidencia: {minute.next_meeting.evidence}")
     else:
         _add_empty_message(document, "No se indicó una próxima reunión.")
 

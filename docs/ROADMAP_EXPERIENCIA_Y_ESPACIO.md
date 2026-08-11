@@ -1,5 +1,7 @@
 # Roadmap de experiencia, automatizacion y espacio
 
+> Estado vigente: [ESTADO_PENDIENTES_2026-08-11.md](ESTADO_PENDIENTES_2026-08-11.md). Este roadmap conserva el orden histórico; el estado ejecutado se registra en ese documento.
+
 ## Prioridad 1: menos trabajo manual
 
 1. Integrar audio y video en la GUI. El transcriptor opcional ya existe; falta incorporarlo al selector de fuente, mostrar progreso y permitir revisar hablantes antes del analisis.

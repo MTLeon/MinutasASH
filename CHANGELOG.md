@@ -1,5 +1,34 @@
 # Changelog
 
+## [2.3.4] - 2026-08-11
+
+### Añadido
+
+- Bandeja unificada, carpeta vigilada, cola recuperable y detección de duplicados por hash.
+- Transcripción Whisper opcional, diarización desacoplada y componentes administrables.
+- Banco de evaluación y comparación entre proveedores con trazabilidad de modelo, prompt y configuración.
+- Validación estructurada, recuperación de JSON flexible y comprobación de evidencia.
+- Automatización de reuniones, notificaciones, diagnóstico exportable y observabilidad.
+- Atajos globales y contextuales, selección mediante teclado o arrastre, ordenamiento y copiado de tablas.
+- Instalador separado para Whisper CPU y smoke reproducible de instalación limpia.
+
+### Mejorado
+
+- Revisión masiva con deshacer, búsqueda, foco automático y mejor contraste.
+- Filtrado de etiquetas que no representan personas.
+- Prevención de códigos de proyecto provisionales antes de procesar o emitir.
+- Aprendizaje controlado, exportación de dataset y análisis de correcciones aprobadas.
+- Documentación, scripts de calidad y construcción final de Windows.
+
+### Validación
+
+- 219 pruebas aprobadas y 71,73 % de cobertura.
+- 75 escenarios visuales aprobados.
+- Aplicación, worker e instaladores firmados y verificados.
+- Smoke completo de instalación, ejecución y desinstalación aprobado.
+
+ Changelog
+
 ## [2.3.3] - 2026-07-31
 
 ### Añadido

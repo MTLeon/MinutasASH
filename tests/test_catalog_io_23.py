@@ -17,10 +17,26 @@ class CatalogIO23Tests(unittest.TestCase):
             db = AppDatabase(root / "minutas.db")
             source = root / "contacts.csv"
             with source.open("w", encoding="utf-8-sig", newline="") as handle:
-                writer = csv.DictWriter(handle, fieldnames=["name", "email", "organization", "active"])
+                writer = csv.DictWriter(
+                    handle, fieldnames=["name", "email", "organization", "active"]
+                )
                 writer.writeheader()
-                writer.writerow({"name": "Ana Pérez", "email": "ana@example.com", "organization": "ASH", "active": "Sí"})
-                writer.writerow({"name": "", "email": "sin-nombre@example.com", "organization": "ASH", "active": "Sí"})
+                writer.writerow(
+                    {
+                        "name": "Ana Pérez",
+                        "email": "ana@example.com",
+                        "organization": "ASH",
+                        "active": "Sí",
+                    }
+                )
+                writer.writerow(
+                    {
+                        "name": "",
+                        "email": "sin-nombre@example.com",
+                        "organization": "ASH",
+                        "active": "Sí",
+                    }
+                )
             summary = import_catalog(db, "contacts", source)
             self.assertEqual(summary.imported, 1)
             self.assertEqual(summary.skipped, 1)
@@ -36,6 +52,7 @@ class CatalogIO23Tests(unittest.TestCase):
             self.assertEqual(result, destination)
             self.assertTrue(destination.is_file())
             from openpyxl import load_workbook
+
             workbook = load_workbook(destination, read_only=True)
             try:
                 headers = [cell.value for cell in next(workbook.active.iter_rows())]
@@ -73,6 +90,44 @@ class CatalogIO23Tests(unittest.TestCase):
             renamed = workbook.with_name("contacts_liberado.xlsx")
             workbook.replace(renamed)
             renamed.replace(workbook)
+
+    def test_imports_split_name_user_export(self) -> None:
+        from openpyxl import Workbook
+
+        with TemporaryDirectory() as temp:
+            source = Path(temp) / "usuarios.xlsx"
+            workbook = Workbook()
+            sheet = workbook.active
+            sheet.append(
+                [
+                    "USR_ID",
+                    "Nick",
+                    "Rut",
+                    "eMail",
+                    "Primer N.",
+                    "Segundo N.",
+                    "Apellido Pat.",
+                    "Apellido Mat.",
+                ]
+            )
+            sheet.append(
+                [225, "ADP", "11.111.111-1", "ana@example.test", "Ana", "Demo", "Pérez", "Prueba"]
+            )
+            sheet.append([173, "BDR", "22.222.222-2", "x", "Bruno", "Demo", "Rojas", "Prueba"])
+            workbook.save(source)
+            workbook.close()
+            database = AppDatabase(Path(temp) / "catalog.db")
+            summary = import_catalog(database, "contacts", source)
+            rows = database.list_contact_records(include_inactive=True)
+            self.assertEqual(summary.imported, 2)
+            self.assertEqual(
+                {row["name"] for row in rows},
+                {"Ana Demo Pérez Prueba", "Bruno Demo Rojas Prueba"},
+            )
+            bruno = next(row for row in rows if row["name"].startswith("Bruno"))
+            self.assertIsNone(bruno["email"])
+            self.assertEqual(bruno["organization"], "ASH")
+            self.assertIn("RUT:", bruno["notes"])
 
 
 if __name__ == "__main__":

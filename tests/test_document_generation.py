@@ -21,9 +21,7 @@ class DocumentGenerationTests(unittest.TestCase):
             client="Cliente",
             minute_taker="Ana Pérez",
             minute_taker_date="2026-07-30",
-            attendees=[
-                Attendee(id=1, initials="AP", name="Ana Pérez", organization="ASH")
-            ],
+            attendees=[Attendee(id=1, initials="AP", name="Ana Pérez", organization="ASH")],
         )
         analysis = MinuteAnalysis(
             executive_summary="Prueba",
@@ -64,18 +62,20 @@ class DocumentGenerationTests(unittest.TestCase):
             minute_taker_date="2026-07-30",
             attendees=[Attendee(id=1, initials="AP", name="Ana Pérez", organization="ASH")],
         )
-        analysis = MinuteAnalysis(items=[
-            MeetingItem(
-                category="acuerdo",
-                description="Punto aprobado.",
-                review_status="aprobado",
-            ),
-            MeetingItem(
-                category="informativo",
-                description="Punto descartado.",
-                review_status="descartado",
-            ),
-        ])
+        analysis = MinuteAnalysis(
+            items=[
+                MeetingItem(
+                    category="acuerdo",
+                    description="Punto aprobado.",
+                    review_status="aprobado",
+                ),
+                MeetingItem(
+                    category="informativo",
+                    description="Punto descartado.",
+                    review_status="descartado",
+                ),
+            ]
+        )
         with tempfile.TemporaryDirectory() as tmp:
             output = Path(tmp) / "minuta.docx"
             generate_ash_docx(analysis, metadata, output, ROOT / "assets" / "logo_ash.png")

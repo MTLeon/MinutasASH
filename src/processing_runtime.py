@@ -17,8 +17,8 @@ from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from typing import Any
 
-GIB = 1024 ** 3
-MIB = 1024 ** 2
+GIB = 1024**3
+MIB = 1024**2
 
 
 @dataclass(frozen=True)
@@ -183,7 +183,9 @@ def get_resource_snapshot() -> ResourceSnapshot:
     return ResourceSnapshot(None, None, None, time.time())
 
 
-def _profile_with_overrides(profile: ProcessingProfile, config: dict[str, Any]) -> ProcessingProfile:
+def _profile_with_overrides(
+    profile: ProcessingProfile, config: dict[str, Any]
+) -> ProcessingProfile:
     """Aplica límites administrativos sin volver frágil el modo automático."""
 
     configured_timeout = int(config.get("timeout_seconds", profile.timeout_seconds))
@@ -216,13 +218,21 @@ def _profile_with_overrides(profile: ProcessingProfile, config: dict[str, Any]) 
         single_pass_chars=max(2000, single_pass),
         context_length=max(2048, context),
         timeout_seconds=timeout,
-        min_chunk_chars=max(1200, int(config.get("processing_min_chunk_chars", profile.min_chunk_chars))),
+        min_chunk_chars=max(
+            1200, int(config.get("processing_min_chunk_chars", profile.min_chunk_chars))
+        ),
         max_retries=retries,
         consolidation_batch_chars=max(
             5000,
-            int(config.get("processing_consolidation_batch_chars", profile.consolidation_batch_chars)),
+            int(
+                config.get(
+                    "processing_consolidation_batch_chars", profile.consolidation_batch_chars
+                )
+            ),
         ),
-        overlap_lines=max(0, min(int(config.get("processing_overlap_lines", profile.overlap_lines)), 8)),
+        overlap_lines=max(
+            0, min(int(config.get("processing_overlap_lines", profile.overlap_lines)), 8)
+        ),
     )
 
 
@@ -274,7 +284,9 @@ def resolve_processing_plan(
                 "se dividirán automáticamente los bloques que tarden demasiado."
             )
             profile = _profile_with_overrides(PROFILE_PRESETS["fast"], config)
-            reason = "La memoria está en nivel crítico; se fuerza un plan conservador y recuperable."
+            reason = (
+                "La memoria está en nivel crítico; se fuerza un plan conservador y recuperable."
+            )
         elif percent >= warning_threshold:
             memory_warning = (
                 f"Memoria elevada ({percent:.0f} %). El procesamiento puede tardar más."
@@ -408,11 +420,7 @@ def estimate_eta_seconds(completed_durations: list[float], remaining_weight: flo
     # la estimación. Se evita importar statistics en la ruta crítica.
     ordered = sorted(valid[-8:])
     middle = len(ordered) // 2
-    median = (
-        ordered[middle]
-        if len(ordered) % 2
-        else (ordered[middle - 1] + ordered[middle]) / 2.0
-    )
+    median = ordered[middle] if len(ordered) % 2 else (ordered[middle - 1] + ordered[middle]) / 2.0
     return median * remaining_weight
 
 

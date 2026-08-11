@@ -152,7 +152,16 @@ def attendee_display_columns(mode: object) -> tuple[str, ...]:
 
 def review_display_columns(mode: object) -> tuple[str, ...]:
     if normalize_interface_mode(mode) == "advanced":
-        return ("n", "status", "quality", "project", "category", "description", "responsible", "date")
+        return (
+            "n",
+            "status",
+            "quality",
+            "project",
+            "category",
+            "description",
+            "responsible",
+            "date",
+        )
     return ("status", "project", "description", "responsible", "date")
 
 

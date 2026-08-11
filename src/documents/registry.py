@@ -19,6 +19,5 @@ def get_document_provider(provider_id: str) -> DocumentProvider:
 
 def list_document_providers() -> list[tuple[str, str]]:
     return sorted(
-        (provider_id, provider.display_name)
-        for provider_id, provider in _PROVIDERS.items()
+        (provider_id, provider.display_name) for provider_id, provider in _PROVIDERS.items()
     )

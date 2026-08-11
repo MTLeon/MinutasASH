@@ -28,7 +28,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--modelo", default=None)
     parser.add_argument(
         "--proveedor",
-        choices=["ollama_local", "azure_openai", "openai", "anthropic", "gemini", "openai_compatible"],
+        choices=[
+            "ollama_local",
+            "azure_openai",
+            "openai",
+            "anthropic",
+            "gemini",
+            "openai_compatible",
+        ],
         default=None,
     )
     return parser.parse_args()
@@ -83,7 +90,8 @@ def _run(args: argparse.Namespace, logger: logging.Logger) -> int:
         status="generada",
         docx_path=str(docx),
         json_path=str(json_path),
-        app_version=str(config.get("app_version", "2.3.3")),
+        pdf_path=str(docx.with_suffix(".pdf")) if docx.with_suffix(".pdf").is_file() else None,
+        app_version=str(config.get("app_version", "2.3.4")),
         document_provider=str(config.get("document_provider", "ash_minutes_v1")),
         processing_provider=bundle.provider_id,
         processing_provider_name=bundle.provider_name,

@@ -54,7 +54,9 @@ def is_newer_version(
     current_sequence: int | None = None,
 ) -> bool:
     if candidate_sequence is not None or current_sequence is not None:
-        left = int(candidate_sequence if candidate_sequence is not None else version_sequence(candidate))
+        left = int(
+            candidate_sequence if candidate_sequence is not None else version_sequence(candidate)
+        )
         right = int(current_sequence if current_sequence is not None else version_sequence(current))
         return left > right
     return _version_tuple(candidate) > _version_tuple(current)
@@ -114,7 +116,9 @@ def check_manifest(manifest_url: str, channel: str = "stable") -> UpdateInfo:
         mandatory=bool(data.get("mandatory", False)),
         published_at=str(data.get("published_at") or "") or None,
         source="manifest",
-        release_sequence=(int(data["release_sequence"]) if data.get("release_sequence") is not None else None),
+        release_sequence=(
+            int(data["release_sequence"]) if data.get("release_sequence") is not None else None
+        ),
     )
 
 
@@ -146,7 +150,8 @@ def check_github_release(
             raise UpdateError("GitHub devolvió un listado de releases inválido.")
         release = next(
             (
-                item for item in releases
+                item
+                for item in releases
                 if isinstance(item, dict)
                 and not item.get("draft")
                 and (allow_prerelease or not item.get("prerelease"))
@@ -164,7 +169,8 @@ def check_github_release(
     assets = release.get("assets") or []
     installer = next(
         (
-            asset for asset in assets
+            asset
+            for asset in assets
             if isinstance(asset, dict)
             and str(asset.get("name", "")).lower().endswith(".exe")
             and "minutasash_setup" in str(asset.get("name", "")).lower()
@@ -175,7 +181,8 @@ def check_github_release(
         raise UpdateError("La release no contiene el instalador de Minutas ASH.")
     checksum_asset = next(
         (
-            asset for asset in assets
+            asset
+            for asset in assets
             if isinstance(asset, dict)
             and "sha256" in str(asset.get("name", "")).lower()
             and str(asset.get("name", "")).lower().endswith((".txt", ".sha256"))
@@ -214,7 +221,10 @@ def check_for_updates(settings: dict) -> UpdateInfo:
 def update_source_is_configured(settings: dict) -> bool:
     source = str(settings.get("update_source", "manifest"))
     if source == "github":
-        return bool(str(settings.get("github_owner", "")).strip() and str(settings.get("github_repo", "")).strip())
+        return bool(
+            str(settings.get("github_owner", "")).strip()
+            and str(settings.get("github_repo", "")).strip()
+        )
     return bool(str(settings.get("update_manifest_url", "")).strip())
 
 
@@ -245,7 +255,9 @@ def download_update(
     progress = progress or (lambda _value, _text: None)
     updates_dir = user_data_root() / "updates"
     updates_dir.mkdir(parents=True, exist_ok=True)
-    filename = Path(info.installer_url.split("?", 1)[0]).name or f"MinutasASH_Setup_{info.version}.exe"
+    filename = (
+        Path(info.installer_url.split("?", 1)[0]).name or f"MinutasASH_Setup_{info.version}.exe"
+    )
     final_path = updates_dir / filename
     temporary = final_path.with_suffix(final_path.suffix + ".download")
     digest = hashlib.sha256()
@@ -262,7 +274,12 @@ def download_update(
                     digest.update(chunk)
                     completed += len(chunk)
                     value = int(completed * 100 / total) if total else 0
-                    progress(value, f"Descargando actualización... {value}%" if total else "Descargando actualización...")
+                    progress(
+                        value,
+                        f"Descargando actualización... {value}%"
+                        if total
+                        else "Descargando actualización...",
+                    )
     except requests.RequestException as exc:
         temporary.unlink(missing_ok=True)
         raise UpdateError(f"No fue posible descargar la actualización: {exc}") from exc

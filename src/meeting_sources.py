@@ -20,12 +20,14 @@ from src.runtime_paths import drafts_dir
 from src.storage import safe_component
 from src.vtt_reader import TranscriptSegment, merge_adjacent_segments, read_teams_vtt
 
-SourceType = Literal["vtt", "docx", "txt", "pasted", "notes"]
+SourceType = Literal["vtt", "srt", "docx", "pdf", "txt", "pasted", "notes"]
 SourceQuality = Literal["alta", "media", "baja"]
 
 SOURCE_TYPE_LABELS: dict[str, str] = {
     "vtt": "Transcripción de Teams (VTT)",
+    "srt": "Subtítulos o transcripción (SRT)",
     "docx": "Transcripción o notas Word",
+    "pdf": "Documento PDF",
     "txt": "Archivo de texto",
     "pasted": "Conversación pegada",
     "notes": "Notas manuales",
@@ -174,20 +176,61 @@ def _read_docx_text(path: Path) -> str:
     return "\n".join(lines)
 
 
+def _read_srt_segments(path: Path) -> list[TranscriptSegment]:
+    content = path.read_text(encoding="utf-8-sig", errors="replace")
+    segments: list[TranscriptSegment] = []
+    for block in re.split(r"\r?\n\s*\r?\n", content.strip()):
+        lines = [line.strip() for line in block.splitlines() if line.strip()]
+        timing_index = next((index for index, line in enumerate(lines) if "-->" in line), None)
+        if timing_index is None:
+            continue
+        timing = lines[timing_index].split("-->", 1)
+        start = _normalize_timestamp(timing[0].strip(), len(segments))
+        end = _normalize_timestamp(timing[1].strip().split()[0], len(segments))
+        body = re.sub(r"<[^>]+>", "", " ".join(lines[timing_index + 1 :])).strip()
+        if not body:
+            continue
+        speaker, text = "Hablante no identificado", body
+        match = _SPEAKER_RE.match(body)
+        if match and _looks_like_speaker(match.group("speaker")):
+            speaker, text = match.group("speaker"), match.group("text")
+        segments.append(TranscriptSegment(start, end, speaker, text))
+    if not segments:
+        raise ValueError("El archivo SRT no contiene subtítulos utilizables.")
+    return segments
+
+
+def _read_pdf_text(path: Path) -> str:
+    from pypdf import PdfReader
+
+    reader = PdfReader(str(path))
+    return "\n".join(text for page in reader.pages if (text := (page.extract_text() or "").strip()))
+
+
 def infer_source_type(path: str | Path, preferred: str | None = None) -> SourceType:
     if preferred in SOURCE_TYPE_LABELS:
         return cast(SourceType, preferred)
     suffix = Path(path).suffix.casefold()
-    mapping: dict[str, SourceType] = {".vtt": "vtt", ".docx": "docx", ".txt": "txt"}
+    mapping: dict[str, SourceType] = {
+        ".vtt": "vtt",
+        ".srt": "srt",
+        ".docx": "docx",
+        ".pdf": "pdf",
+        ".txt": "txt",
+    }
     if suffix not in mapping:
-        raise ValueError("Formato no admitido. Use VTT, TXT o DOCX.")
+        raise ValueError("Formato no admitido. Use VTT, SRT, TXT, DOCX o PDF.")
     return mapping[suffix]
 
 
 def source_quality(source_type: str, segments: list[TranscriptSegment]) -> SourceQuality:
-    if source_type == "vtt":
+    if source_type in {"vtt", "srt"}:
         return "alta"
-    identified = sum(1 for segment in segments if segment.speaker not in {"Notas de reunión", "Hablante no identificado"})
+    identified = sum(
+        1
+        for segment in segments
+        if segment.speaker not in {"Notas de reunión", "Hablante no identificado"}
+    )
     ratio = identified / max(len(segments), 1)
     if source_type == "docx" and ratio >= 0.6:
         return "alta"
@@ -204,12 +247,26 @@ def read_meeting_source(path: str | Path, preferred_type: str | None = None) -> 
     warnings: list[str] = []
     if source_type == "vtt":
         segments = read_teams_vtt(source_path, merge_adjacent=False)
+    elif source_type == "srt":
+        segments = _read_srt_segments(source_path)
+        warnings.append(
+            "El archivo SRT conserva tiempos, pero puede no identificar a todos los hablantes."
+        )
     elif source_type == "docx":
         segments = parse_text_transcript(_read_docx_text(source_path))
-        warnings.append("El documento Word no siempre conserva marcas de tiempo o atribución completa de hablantes.")
+        warnings.append(
+            "El documento Word no siempre conserva marcas de tiempo o atribución completa de hablantes."
+        )
+    elif source_type == "pdf":
+        segments = parse_text_transcript(_read_pdf_text(source_path))
+        warnings.append("El PDF requiere confirmar orden, hablantes y fechas durante la revisión.")
     else:
-        segments = parse_text_transcript(source_path.read_text(encoding="utf-8-sig", errors="replace"))
-        warnings.append("La fuente textual requiere confirmar hablantes, fechas y contexto durante la revisión.")
+        segments = parse_text_transcript(
+            source_path.read_text(encoding="utf-8-sig", errors="replace")
+        )
+        warnings.append(
+            "La fuente textual requiere confirmar hablantes, fechas y contexto durante la revisión."
+        )
     quality = source_quality(source_type, segments)
     return MeetingSource(source_path, source_type, quality, segments, tuple(warnings))
 
@@ -226,7 +283,9 @@ def create_text_source(
         raise ValueError("Ingrese contenido suficiente para preparar la minuta.")
     drafts_dir().mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    destination = drafts_dir() / f"{safe_component(suggested_name, 'reunion')}_{source_type}_{stamp}.txt"
+    destination = (
+        drafts_dir() / f"{safe_component(suggested_name, 'reunion')}_{source_type}_{stamp}.txt"
+    )
     destination.write_text(content, encoding="utf-8")
     segments = parse_text_transcript(content)
     return MeetingSource(
@@ -240,10 +299,15 @@ def create_text_source(
 
 def supported_filetypes() -> list[tuple[str, str]]:
     return [
-        ("Fuentes de reunión", "*.vtt *.txt *.docx *.mp3 *.wav *.m4a *.flac *.ogg *.mp4 *.mkv *.webm"),
+        (
+            "Fuentes de reunión",
+            "*.vtt *.srt *.txt *.docx *.pdf *.mp3 *.wav *.m4a *.flac *.ogg *.mp4 *.mkv *.webm",
+        ),
         ("Audio y video", "*.mp3 *.wav *.m4a *.flac *.ogg *.mp4 *.mkv *.webm"),
         ("Transcripción de Teams", "*.vtt"),
+        ("Subtítulos SRT", "*.srt"),
         ("Texto", "*.txt"),
         ("Documento Word", "*.docx"),
+        ("Documento PDF", "*.pdf"),
         ("Todos los archivos", "*.*"),
     ]

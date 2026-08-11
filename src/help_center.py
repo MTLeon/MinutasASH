@@ -15,7 +15,7 @@ TOPICS = {
     "usuario": ("Manual de usuario", "Manual_Usuario_2.3.3.md"),
     "configuracion": ("Manual de instalación y configuración", "Manual_Configuracion_2.3.3.md"),
     "procesamiento": ("Reuniones extensas y recuperación", "PROCESAMIENTO_RESILIENTE_2.3.3.md"),
-    "productividad": ("Revisión masiva y ventanas", "QOL_REVISION_VENTANAS_2.3.3.md"),
+    "productividad": ("Atajos y productividad", "QOL_TECLADO_Y_TABLAS_2.3.4.md"),
     "programador": ("Guía del programador y depuración", "Manual_Programador_2.3.3.md"),
 }
 
@@ -63,7 +63,9 @@ class HelpCenter(tk.Toplevel):
         body.add(navigation, weight=1)
         body.add(content, weight=5)
 
-        ttk.Label(navigation, text="Contenido", style="Section.TLabel").pack(anchor="w", pady=(0, 8))
+        ttk.Label(navigation, text="Contenido", style="Section.TLabel").pack(
+            anchor="w", pady=(0, 8)
+        )
         for key, (label, _file) in TOPICS.items():
             ttk.Radiobutton(
                 navigation,
@@ -73,11 +75,15 @@ class HelpCenter(tk.Toplevel):
                 command=self._load_topic,
             ).pack(anchor="w", fill="x", pady=3)
         ttk.Separator(navigation).pack(fill="x", pady=12)
-        ttk.Button(navigation, text="Abrir archivo externo", command=self._open_external).pack(fill="x")
+        ttk.Button(navigation, text="Abrir archivo externo", command=self._open_external).pack(
+            fill="x"
+        )
         ttk.Button(navigation, text="Cerrar", command=self.destroy).pack(fill="x", pady=(8, 0))
 
         self.title_var = tk.StringVar()
-        ttk.Label(content, textvariable=self.title_var, style="Section.TLabel").pack(anchor="w", pady=(0, 8))
+        ttk.Label(content, textvariable=self.title_var, style="Section.TLabel").pack(
+            anchor="w", pady=(0, 8)
+        )
         self.text = ScrolledText(content, wrap="word", font=("Segoe UI", 10), padx=12, pady=12)
         self.text.pack(fill="both", expand=True)
         self.text.tag_configure("match", background="#FFF2CC")

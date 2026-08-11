@@ -16,6 +16,7 @@ from src.coverage_guard import (
     merge_analyses,
 )
 from src.documents.registry import get_document_provider
+from src.evidence_validation import annotate_evidence
 from src.meeting_sources import read_meeting_source
 from src.metadata import enrich_attendees
 from src.minute_generator import (
@@ -24,6 +25,7 @@ from src.minute_generator import (
 )
 from src.models import MeetingMetadata, MinuteAnalysis
 from src.ollama_client import LocalEngineTimeout, StructuredOutputTruncated
+from src.pdf_writer import generate_minute_pdf
 from src.postprocess import normalize_analysis
 from src.processing_runtime import (
     adaptive_timeout_seconds,
@@ -271,10 +273,7 @@ def analyze_meeting(
         "single_pass_timed_out": False,
     }
 
-    use_single_pass = (
-        not plan.force_chunking
-        and len(transcript_text) <= profile.single_pass_chars
-    )
+    use_single_pass = not plan.force_chunking and len(transcript_text) <= profile.single_pass_chars
     analysis: MinuteAnalysis
     if use_single_pass:
         if cancelled():
@@ -293,10 +292,7 @@ def analyze_meeting(
             operation={"stage": "single_pass", "block_index": 1, "total_blocks": 1},
         )
         progress(30, "Analizando reunión en una etapa")
-        log(
-            "Procesamiento optimizado en una etapa · "
-            f"espera máxima adaptativa {timeout} s."
-        )
+        log(f"Procesamiento optimizado en una etapa · espera máxima adaptativa {timeout} s.")
         try:
             analysis = analyze_complete_transcript(
                 client,
@@ -360,11 +356,7 @@ def analyze_meeting(
         not analysis.items or initial_report.ratio < minimum_coverage
     )
 
-    if (
-        guard_enabled
-        and should_recover
-        and bool(config.get("semantic_guard_second_pass", True))
-    ):
+    if guard_enabled and should_recover and bool(config.get("semantic_guard_second_pass", True)):
         if cancelled():
             raise InterruptedError("Proceso cancelado por el usuario.")
         recovery_attempted = True
@@ -418,9 +410,7 @@ def analyze_meeting(
                 )
         recovery_error = " | ".join(recovery_errors) or None
         if not recovery_errors:
-            log(
-                f"Se completó la comprobación focalizada en {len(batches)} grupo(s)."
-            )
+            log(f"Se completó la comprobación focalizada en {len(batches)} grupo(s).")
 
     after_recovery = evaluate_coverage(candidates, analysis)
     if (
@@ -432,9 +422,7 @@ def analyze_meeting(
             analysis,
             after_recovery.uncovered,
             metadata,
-            minimum_confidence=float(
-                config.get("semantic_guard_fallback_min_confidence", 0.82)
-            ),
+            minimum_confidence=float(config.get("semantic_guard_fallback_min_confidence", 0.82)),
         )
         analysis = normalize_analysis(analysis, metadata)
         if fallback_added:
@@ -442,6 +430,14 @@ def analyze_meeting(
                 f"El control automático recuperó {fallback_added} punto(s) "
                 "explícito(s) para revisión humana."
             )
+
+    evidence_checks = annotate_evidence(analysis.items, segments)
+    evidence_verified = sum(check.verified is True for check in evidence_checks)
+    evidence_unverified = sum(check.verified is False for check in evidence_checks)
+    if evidence_unverified:
+        analysis.warnings.append(
+            f"{evidence_unverified} punto(s) requieren revisar su evidencia temporal."
+        )
 
     final_report = evaluate_coverage(candidates, analysis)
     if final_report.uncovered:
@@ -451,10 +447,32 @@ def analyze_meeting(
         )
     analysis.warnings = list(dict.fromkeys(analysis.warnings))
 
+    final_snapshot = get_resource_snapshot()
+    estimated_input_tokens = max(1, len(transcript_text) // 4)
+    input_rate = float(
+        config.get(
+            f"{provider_id}_input_cost_per_million_usd",
+            config.get("remote_input_cost_per_million_usd", 0.0),
+        )
+        or 0.0
+    )
+    estimated_cost_usd = (
+        estimated_input_tokens * input_rate / 1_000_000 if descriptor.is_remote else 0.0
+    )
+    try:
+        source_size_bytes = source.stat().st_size
+    except OSError:
+        source_size_bytes = 0
+
     diagnostics = {
         "source_type": meeting_source.source_type,
         "source_quality": meeting_source.quality,
         "source_warnings": list(meeting_source.warnings),
+        "evidence": {
+            "verified": evidence_verified,
+            "unverified": evidence_unverified,
+            "not_applicable": len(evidence_checks) - evidence_verified - evidence_unverified,
+        },
         "semantic_guard_enabled": guard_enabled,
         "quality_status": _quality_status(
             len(candidates), fallback_added, len(final_report.uncovered)
@@ -462,11 +480,23 @@ def analyze_meeting(
         "candidate_count": len(candidates),
         "initial_coverage": initial_report.to_dict(),
         "recovery_attempted": recovery_attempted,
-        "recovery_batches": len(_candidate_batches(list(initial_report.uncovered))) if recovery_attempted else 0,
+        "recovery_batches": len(_candidate_batches(list(initial_report.uncovered)))
+        if recovery_attempted
+        else 0,
         "recovery_error": recovery_error,
         "fallback_added": fallback_added,
         "final_coverage": final_report.to_dict(),
         "processing": pipeline_diagnostics,
+        "performance": {
+            "source_size_bytes": source_size_bytes,
+            "transcript_characters": len(transcript_text),
+            "segment_count": len(segments),
+            "item_count": len(analysis.items),
+            "estimated_input_tokens": estimated_input_tokens,
+            "estimated_cost_usd": round(estimated_cost_usd, 6),
+            "ending_memory_percent": final_snapshot.memory_percent,
+            "ending_available_memory_bytes": final_snapshot.available_memory_bytes,
+        },
         "total_elapsed_seconds": monotonic() - pipeline_started,
     }
 
@@ -520,15 +550,21 @@ def generate_word_package(
 
     number = safe_component(bundle.metadata.minute_number, "Minuta")
     docx_path = folder.document_dir / f"{number}.docx"
-    provider = get_document_provider(
-        str(config.get("document_provider", "ash_minutes_v1"))
-    )
+    provider = get_document_provider(str(config.get("document_provider", "ash_minutes_v1")))
     provider.generate(
         bundle.analysis,
         bundle.metadata,
         docx_path,
         config,
     )
+    if bool(config.get("generate_pdf", True)):
+        logo_path = config.get("logo_path")
+        generate_minute_pdf(
+            bundle.analysis,
+            bundle.metadata,
+            docx_path.with_suffix(".pdf"),
+            logo_path=logo_path,
+        )
     return docx_path, json_path, transcript_path, folder
 
 
@@ -539,7 +575,5 @@ def generate_word(
     config: dict,
     basename: str | None = None,
 ) -> tuple[Path, Path, Path]:
-    docx, json_path, transcript, _folder = generate_word_package(
-        bundle, output_dir, config
-    )
+    docx, json_path, transcript, _folder = generate_word_package(bundle, output_dir, config)
     return docx, json_path, transcript

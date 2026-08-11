@@ -26,6 +26,7 @@ def environment_variable(provider_id: str) -> str:
 
 
 if os.name == "nt":
+
     class CREDENTIALW(ctypes.Structure):
         _fields_ = [
             ("Flags", wintypes.DWORD),
@@ -75,7 +76,9 @@ def set_secret(provider_id: str, secret: str) -> None:
     if not secret:
         raise ValueError("La credencial no puede quedar vacía.")
     if os.name != "nt":
-        raise SecretStoreError("El almacenamiento seguro de credenciales está disponible en Windows.")
+        raise SecretStoreError(
+            "El almacenamiento seguro de credenciales está disponible en Windows."
+        )
 
     target = credential_target(provider_id)
     blob = secret.encode("utf-16-le")

@@ -51,6 +51,7 @@ class ProcessingCheckpoint232Tests(unittest.TestCase):
             path = root / "old.json"
             path.write_text("{}", encoding="utf-8")
             import os
+
             os.utime(path, (1, 1))
             store = ProcessingCheckpointStore(root)
             self.assertEqual(store.prune(1), 1)

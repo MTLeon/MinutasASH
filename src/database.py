@@ -24,13 +24,14 @@ from src.models import Attendee, MeetingMetadata, MinuteAnalysis
 from src.release_identity import APP_VERSION
 from src.runtime_paths import database_path
 
-CURRENT_SCHEMA_VERSION = 6
+CURRENT_SCHEMA_VERSION = 8
 
 
 def _inserted_id(cursor: sqlite3.Cursor) -> int:
     if cursor.lastrowid is None:
         raise RuntimeError("SQLite no devolvió el identificador insertado.")
     return int(cursor.lastrowid)
+
 
 def normalize_name(value: str) -> str:
     normalized = unicodedata.normalize("NFKD", value or "")
@@ -192,9 +193,7 @@ class AppDatabase:
         for name, data_type in additions.items():
             if not self._column_exists(db, "meetings", name):
                 db.execute(f"ALTER TABLE meetings ADD COLUMN {name} {data_type}")
-        db.execute(
-            "CREATE INDEX IF NOT EXISTS idx_meetings_number ON meetings(minute_number)"
-        )
+        db.execute("CREATE INDEX IF NOT EXISTS idx_meetings_number ON meetings(minute_number)")
 
     def _migration_3(self, db: sqlite3.Connection) -> None:
         additions = {
@@ -449,6 +448,36 @@ class AppDatabase:
             """
         )
 
+    def _migration_7(self, db: sqlite3.Connection) -> None:
+        """Aislamiento de aprendizaje por cliente y exclusión explícita."""
+
+        additions = {
+            "client_scope": "TEXT NOT NULL DEFAULT ''",
+            "excluded_reason": "TEXT",
+        }
+        for name, data_type in additions.items():
+            if not self._column_exists(db, "learning_samples", name):
+                db.execute(f"ALTER TABLE learning_samples ADD COLUMN {name} {data_type}")
+        db.execute(
+            """
+            UPDATE learning_samples
+            SET client_scope=UPPER(TRIM(COALESCE((
+                SELECT client FROM meetings WHERE meetings.id=learning_samples.meeting_id
+            ), '')))
+            WHERE client_scope IS NULL OR client_scope=''
+            """
+        )
+        db.execute(
+            """CREATE INDEX IF NOT EXISTS idx_learning_samples_client
+               ON learning_samples(approved, client_scope, project_code, meeting_type)"""
+        )
+
+    def _migration_8(self, db: sqlite3.Connection) -> None:
+        """Persistencia del PDF emitido junto al documento Word."""
+
+        if not self._column_exists(db, "meetings", "pdf_path"):
+            db.execute("ALTER TABLE meetings ADD COLUMN pdf_path TEXT")
+
     def _initialize(self) -> None:
         with self.connect() as db:
             version = self._detect_schema_version(db)
@@ -467,6 +496,8 @@ class AppDatabase:
                 4: self._migration_4,
                 5: self._migration_5,
                 6: self._migration_6,
+                7: self._migration_7,
+                8: self._migration_8,
             }
             while version < CURRENT_SCHEMA_VERSION:
                 target = version + 1
@@ -690,7 +721,11 @@ class AppDatabase:
     # Catálogos corporativos
     # ------------------------------------------------------------------
     def upsert_organization(self, record: OrganizationRecord | dict) -> int:
-        item = record if isinstance(record, OrganizationRecord) else OrganizationRecord.model_validate(record)
+        item = (
+            record
+            if isinstance(record, OrganizationRecord)
+            else OrganizationRecord.model_validate(record)
+        )
         key = normalize_name(item.legal_name)
         now = datetime.now().isoformat(timespec="seconds")
         before = self.get_organization(item.id) if item.id else None
@@ -702,8 +737,19 @@ class AppDatabase:
                         tax_id=?, address=?, email=?, phone=?, active=?, notes=?, updated_at=?
                     WHERE id=?
                     """,
-                    (key, item.legal_name, item.short_name, item.tax_id, item.address,
-                     item.email, item.phone, int(item.active), item.notes, now, item.id),
+                    (
+                        key,
+                        item.legal_name,
+                        item.short_name,
+                        item.tax_id,
+                        item.address,
+                        item.email,
+                        item.phone,
+                        int(item.active),
+                        item.notes,
+                        now,
+                        item.id,
+                    ),
                 )
                 result = int(item.id)
             else:
@@ -724,10 +770,23 @@ class AppDatabase:
                         notes=excluded.notes,
                         updated_at=excluded.updated_at
                     """,
-                    (key, item.legal_name, item.short_name, item.tax_id, item.address,
-                     item.email, item.phone, int(item.active), item.notes, now, now),
+                    (
+                        key,
+                        item.legal_name,
+                        item.short_name,
+                        item.tax_id,
+                        item.address,
+                        item.email,
+                        item.phone,
+                        int(item.active),
+                        item.notes,
+                        now,
+                        now,
+                    ),
                 )
-                row = db.execute("SELECT id FROM organizations WHERE normalized_name=?", (key,)).fetchone()
+                row = db.execute(
+                    "SELECT id FROM organizations WHERE normalized_name=?", (key,)
+                ).fetchone()
                 result_value = row[0] if row else cursor.lastrowid
                 if result_value is None:
                     raise RuntimeError("SQLite no devolvió el identificador de organización.")
@@ -747,7 +806,9 @@ class AppDatabase:
         if not organization_id:
             return None
         with self.connect() as db:
-            row = db.execute("SELECT * FROM organizations WHERE id=?", (organization_id,)).fetchone()
+            row = db.execute(
+                "SELECT * FROM organizations WHERE id=?", (organization_id,)
+            ).fetchone()
         return dict(row) if row else None
 
     def upsert_client(self, record: ClientRecord | dict) -> int:
@@ -764,9 +825,21 @@ class AppDatabase:
                         primary_contact_email=?, primary_contact_phone=?, active=?, notes=?,
                         updated_at=? WHERE id=?
                     """,
-                    (item.organization_id, key, item.legal_name, item.short_name, item.tax_id,
-                     item.address, item.primary_contact_name, item.primary_contact_email,
-                     item.primary_contact_phone, int(item.active), item.notes, now, item.id),
+                    (
+                        item.organization_id,
+                        key,
+                        item.legal_name,
+                        item.short_name,
+                        item.tax_id,
+                        item.address,
+                        item.primary_contact_name,
+                        item.primary_contact_email,
+                        item.primary_contact_phone,
+                        int(item.active),
+                        item.notes,
+                        now,
+                        item.id,
+                    ),
                 )
                 result = int(item.id)
             else:
@@ -790,11 +863,25 @@ class AppDatabase:
                         notes=excluded.notes,
                         updated_at=excluded.updated_at
                     """,
-                    (item.organization_id, key, item.legal_name, item.short_name, item.tax_id,
-                     item.address, item.primary_contact_name, item.primary_contact_email,
-                     item.primary_contact_phone, int(item.active), item.notes, now, now),
+                    (
+                        item.organization_id,
+                        key,
+                        item.legal_name,
+                        item.short_name,
+                        item.tax_id,
+                        item.address,
+                        item.primary_contact_name,
+                        item.primary_contact_email,
+                        item.primary_contact_phone,
+                        int(item.active),
+                        item.notes,
+                        now,
+                        now,
+                    ),
                 )
-                row = db.execute("SELECT id FROM clients WHERE normalized_name=?", (key,)).fetchone()
+                row = db.execute(
+                    "SELECT id FROM clients WHERE normalized_name=?", (key,)
+                ).fetchone()
                 result = int(row[0])
         self.log_audit("upsert", "client", str(result), before, self.get_client(result))
         return result
@@ -837,9 +924,21 @@ class AppDatabase:
                         organization=?, phone=?, active=?, notes=?, organization_id=?, client_id=?,
                         updated_at=? WHERE id=?
                     """,
-                    (key, item.name, item.initials, item.email, item.role, item.organization,
-                     item.phone, int(item.active), item.notes, item.organization_id,
-                     item.client_id, now, item.id),
+                    (
+                        key,
+                        item.name,
+                        item.initials,
+                        item.email,
+                        item.role,
+                        item.organization,
+                        item.phone,
+                        int(item.active),
+                        item.notes,
+                        item.organization_id,
+                        item.client_id,
+                        now,
+                        item.id,
+                    ),
                 )
                 result = int(item.id)
             else:
@@ -862,11 +961,24 @@ class AppDatabase:
                         client_id=COALESCE(excluded.client_id, contacts.client_id),
                         updated_at=excluded.updated_at
                     """,
-                    (key, item.name, item.initials, item.email, item.role, item.organization,
-                     item.phone, int(item.active), item.notes, item.organization_id,
-                     item.client_id, now),
+                    (
+                        key,
+                        item.name,
+                        item.initials,
+                        item.email,
+                        item.role,
+                        item.organization,
+                        item.phone,
+                        int(item.active),
+                        item.notes,
+                        item.organization_id,
+                        item.client_id,
+                        now,
+                    ),
                 )
-                row = db.execute("SELECT id FROM contacts WHERE normalized_name=?", (key,)).fetchone()
+                row = db.execute(
+                    "SELECT id FROM contacts WHERE normalized_name=?", (key,)
+                ).fetchone()
                 result = int(row[0])
         self.log_audit("upsert", "contact", str(result), before, self.get_contact_record(result))
         return result
@@ -937,8 +1049,14 @@ class AppDatabase:
                     active=1,
                     updated_at=excluded.updated_at
                 """,
-                (manifest.template_key, manifest.display_name, manifest.document_type,
-                 manifest.notes, now, now),
+                (
+                    manifest.template_key,
+                    manifest.display_name,
+                    manifest.document_type,
+                    manifest.notes,
+                    now,
+                    now,
+                ),
             )
             template_row = db.execute(
                 "SELECT id FROM document_templates WHERE template_key=?",
@@ -958,8 +1076,16 @@ class AppDatabase:
                     manifest_json=excluded.manifest_json,
                     validation_json=excluded.validation_json
                 """,
-                (template_id, manifest.version_label, file_path, sha256, state,
-                 manifest.model_dump_json(), validation.model_dump_json(), now),
+                (
+                    template_id,
+                    manifest.version_label,
+                    file_path,
+                    sha256,
+                    state,
+                    manifest.model_dump_json(),
+                    validation.model_dump_json(),
+                    now,
+                ),
             )
             row = db.execute(
                 "SELECT id FROM template_versions WHERE template_id=? AND version_label=?",
@@ -1006,10 +1132,25 @@ class AppDatabase:
             raise ValueError("No se encontró la versión de plantilla.")
         now = datetime.now().isoformat(timespec="seconds")
         with self.connect() as db:
-            db.execute("UPDATE template_versions SET state='retired' WHERE template_id=? AND state='active'", (before["template_id"],))
-            db.execute("UPDATE template_versions SET state='active', activated_at=? WHERE id=?", (now, version_id))
-            db.execute("UPDATE document_templates SET active_version_id=?, updated_at=? WHERE id=?", (version_id, now, before["template_id"]))
-        self.log_audit("activate", "template_version", str(version_id), before, self.get_template_version(version_id))
+            db.execute(
+                "UPDATE template_versions SET state='retired' WHERE template_id=? AND state='active'",
+                (before["template_id"],),
+            )
+            db.execute(
+                "UPDATE template_versions SET state='active', activated_at=? WHERE id=?",
+                (now, version_id),
+            )
+            db.execute(
+                "UPDATE document_templates SET active_version_id=?, updated_at=? WHERE id=?",
+                (version_id, now, before["template_id"]),
+            )
+        self.log_audit(
+            "activate",
+            "template_version",
+            str(version_id),
+            before,
+            self.get_template_version(version_id),
+        )
 
     def set_template_state(self, version_id: int, state: str) -> None:
         if state not in {"draft", "testing", "active", "retired"}:
@@ -1020,7 +1161,13 @@ class AppDatabase:
         before = self.get_template_version(version_id)
         with self.connect() as db:
             db.execute("UPDATE template_versions SET state=? WHERE id=?", (state, version_id))
-        self.log_audit("state", "template_version", str(version_id), before, self.get_template_version(version_id))
+        self.log_audit(
+            "state",
+            "template_version",
+            str(version_id),
+            before,
+            self.get_template_version(version_id),
+        )
 
     def resolve_template_version(
         self,
@@ -1091,11 +1238,21 @@ class AppDatabase:
                     entity_id, before_json, after_json, app_version
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (event.created_at, event.windows_user, event.machine_name, event.action,
-                 event.entity_type, event.entity_id,
-                 json.dumps(event.before, ensure_ascii=False) if event.before is not None else None,
-                 json.dumps(event.after, ensure_ascii=False) if event.after is not None else None,
-                 event.app_version),
+                (
+                    event.created_at,
+                    event.windows_user,
+                    event.machine_name,
+                    event.action,
+                    event.entity_type,
+                    event.entity_id,
+                    json.dumps(event.before, ensure_ascii=False)
+                    if event.before is not None
+                    else None,
+                    json.dumps(event.after, ensure_ascii=False)
+                    if event.after is not None
+                    else None,
+                    event.app_version,
+                ),
             )
 
     def list_audit_events(self, limit: int = 500) -> list[dict]:
@@ -1184,6 +1341,7 @@ class AppDatabase:
         status: str,
         docx_path: str | None = None,
         json_path: str | None = None,
+        pdf_path: str | None = None,
         meeting_id: int | None = None,
         app_version: str | None = None,
         document_provider: str | None = None,
@@ -1208,6 +1366,7 @@ class AppDatabase:
             output_dir,
             docx_path,
             json_path,
+            pdf_path,
             status,
             model,
             metadata.model_dump_json(),
@@ -1232,7 +1391,7 @@ class AppDatabase:
                     """
                     UPDATE meetings SET
                         minute_number=?, meeting_date=?, project_code=?, matter=?, client=?,
-                        source_vtt=?, output_dir=?, docx_path=?, json_path=?, status=?, model=?,
+                        source_vtt=?, output_dir=?, docx_path=?, json_path=?, pdf_path=?, status=?, model=?,
                         metadata_json=?, analysis_json=?, app_version=?, document_provider=?,
                         source_sha256=?, processing_provider=?, processing_provider_name=?,
                         last_error=?, source_type=?, source_quality=?, is_test=?,
@@ -1247,13 +1406,13 @@ class AppDatabase:
                 """
                 INSERT INTO meetings (
                     minute_number, meeting_date, project_code, matter, client,
-                    source_vtt, output_dir, docx_path, json_path, status, model,
+                    source_vtt, output_dir, docx_path, json_path, pdf_path, status, model,
                     metadata_json, analysis_json, app_version, document_provider,
                     source_sha256, processing_provider, processing_provider_name,
                     last_error, source_type, source_quality, is_test,
                     template_version_id, template_key, template_version_label,
                     created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 values[:-1] + (now, now),
             )
@@ -1273,7 +1432,7 @@ class AppDatabase:
             rows = db.execute(
                 f"""
                 SELECT id, minute_number, meeting_date, project_code, matter, client,
-                       source_vtt, output_dir, docx_path, status, model, updated_at,
+                       source_vtt, output_dir, docx_path, pdf_path, status, model, updated_at,
                        source_type, source_quality, COALESCE(is_test, 0) AS is_test,
                        deleted_at, deleted_by, deletion_reason, trash_path
                 FROM meetings
@@ -1403,8 +1562,16 @@ class AppDatabase:
                     notes=excluded.notes,
                     updated_at=excluded.updated_at
                 """,
-                (key, canonical, json.dumps(variants or [], ensure_ascii=False), category,
-                 (project_code or "").strip().upper(), notes, now, now),
+                (
+                    key,
+                    canonical,
+                    json.dumps(variants or [], ensure_ascii=False),
+                    category,
+                    (project_code or "").strip().upper(),
+                    notes,
+                    now,
+                    now,
+                ),
             )
             row = db.execute(
                 "SELECT id FROM technical_terms WHERE normalized_term=? AND project_code=?",
@@ -1460,49 +1627,155 @@ class AppDatabase:
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    meeting_id, item_index, kind,
-                    json.dumps(before, ensure_ascii=False, default=str) if before is not None else None,
-                    json.dumps(after, ensure_ascii=False, default=str) if after is not None else None,
-                    int(approved_for_learning), now, getpass.getuser(),
+                    meeting_id,
+                    item_index,
+                    kind,
+                    json.dumps(before, ensure_ascii=False, default=str)
+                    if before is not None
+                    else None,
+                    json.dumps(after, ensure_ascii=False, default=str)
+                    if after is not None
+                    else None,
+                    int(approved_for_learning),
+                    now,
+                    getpass.getuser(),
                 ),
             )
             return _inserted_id(cursor)
+
+    def list_correction_events(
+        self,
+        *,
+        approved_only: bool = False,
+        limit: int = 1000,
+    ) -> list[dict]:
+        safe_limit = max(1, min(int(limit), 10000))
+        where = "WHERE approved_for_learning=1" if approved_only else ""
+        with self.connect() as db:
+            rows = db.execute(
+                f"""SELECT * FROM correction_events {where}
+                    ORDER BY created_at DESC, id DESC LIMIT ?""",
+                (safe_limit,),
+            ).fetchall()
+        return [dict(row) for row in rows]
 
     def list_learning_examples(
         self,
         project_code: str | None = None,
         meeting_type: str | None = None,
         limit: int = 3,
+        client: str | None = None,
+        query_text: str | None = None,
     ) -> list[dict]:
-        """Devuelve ejemplos aprobados priorizando proyecto y tipo de reunión."""
+        """Devuelve ejemplos aprobados, aislados por cliente y ordenados por similitud."""
 
         safe_limit = max(1, min(int(limit), 10))
         project = (project_code or "").strip().upper()
         kind = (meeting_type or "").strip().casefold()
+        client_key = normalize_name(client or "")
+        query_tokens = set(normalize_name(query_text or "").split())
         with self.connect() as db:
             rows = db.execute(
                 """
-                SELECT m.id, m.project_code, m.analysis_json, m.metadata_json,
-                       ls.meeting_type, ls.approved_at
+                SELECT m.id, m.project_code, m.analysis_json, m.metadata_json, m.matter,
+                       m.client, ls.meeting_type, ls.approved_at, ls.client_scope,
+                       ls.anonymized, ls.id AS learning_sample_id
                 FROM learning_samples ls
                 JOIN meetings m ON m.id=ls.meeting_id
                 WHERE ls.approved=1
                   AND m.deleted_at IS NULL
                   AND m.analysis_json IS NOT NULL
                 ORDER BY ls.approved_at DESC, ls.id DESC
-                LIMIT 50
+                LIMIT 200
                 """
             ).fetchall()
         candidates = [dict(row) for row in rows]
+        if client_key:
+            candidates = [
+                row
+                for row in candidates
+                if normalize_name(str(row.get("client_scope") or row.get("client") or ""))
+                == client_key
+            ]
+
+        def similarity(row: dict) -> float:
+            if not query_tokens:
+                return 0.0
+            text = " ".join(
+                str(row.get(key) or "") for key in ("matter", "metadata_json", "analysis_json")
+            )
+            tokens = set(normalize_name(text).split())
+            return len(query_tokens & tokens) / max(len(query_tokens | tokens), 1)
+
         candidates.sort(
             key=lambda row: (
                 int(bool(project) and str(row.get("project_code") or "").upper() == project),
                 int(bool(kind) and str(row.get("meeting_type") or "").casefold() == kind),
+                similarity(row),
                 str(row.get("approved_at") or ""),
             ),
             reverse=True,
         )
         return candidates[:safe_limit]
+
+    def list_learning_samples(
+        self,
+        *,
+        include_excluded: bool = True,
+        client: str | None = None,
+    ) -> list[dict]:
+        clauses = ["m.deleted_at IS NULL", "m.is_test=0"]
+        parameters: list[object] = []
+        if not include_excluded:
+            clauses.append("ls.approved=1")
+        client_key = normalize_name(client or "")
+        with self.connect() as db:
+            rows = db.execute(
+                f"""
+                SELECT ls.*, m.minute_number, m.client, m.matter, m.source_vtt,
+                       m.analysis_json, m.metadata_json
+                FROM learning_samples ls
+                JOIN meetings m ON m.id=ls.meeting_id
+                WHERE {" AND ".join(clauses)}
+                ORDER BY ls.approved_at DESC, ls.id DESC
+                """,
+                parameters,
+            ).fetchall()
+        result = [dict(row) for row in rows]
+        if client_key:
+            result = [
+                row
+                for row in result
+                if normalize_name(str(row.get("client_scope") or row.get("client") or ""))
+                == client_key
+            ]
+        return result
+
+    def set_learning_sample_approved(
+        self,
+        meeting_id: int,
+        approved: bool,
+        reason: str | None = None,
+    ) -> None:
+        now = datetime.now().isoformat(timespec="seconds")
+        with self.connect() as db:
+            cursor = db.execute(
+                """
+                UPDATE learning_samples
+                SET approved=?, excluded_reason=?, approved_at=?, approved_by=?
+                WHERE meeting_id=?
+                """,
+                (
+                    int(approved),
+                    None if approved else (reason or "Excluido manualmente"),
+                    now if approved else None,
+                    getpass.getuser(),
+                    meeting_id,
+                ),
+            )
+            if cursor.rowcount == 0:
+                raise ValueError("No se encontró el ejemplo de aprendizaje.")
+
     def register_learning_sample(
         self,
         meeting_id: int,
@@ -1514,33 +1787,47 @@ class AppDatabase:
         if not row:
             raise ValueError("No se encontró la reunión para registrar el ejemplo.")
         if row.get("deleted_at") or row.get("is_test"):
-            raise ValueError("Las minutas de prueba o en papelera no pueden alimentar el aprendizaje.")
+            raise ValueError(
+                "Las minutas de prueba o en papelera no pueden alimentar el aprendizaje."
+            )
         metadata = json.loads(row.get("metadata_json") or "{}")
         now = datetime.now().isoformat(timespec="seconds")
+        client_scope = normalize_name(
+            str(row.get("client") or metadata.get("client") or "")
+        ).upper()
         with self.connect() as db:
             existing = db.execute(
                 "SELECT id FROM learning_samples WHERE meeting_id=? ORDER BY id DESC LIMIT 1",
                 (meeting_id,),
             ).fetchone()
             values = (
-                row.get("source_sha256"), row.get("source_type") or "vtt",
-                metadata.get("meeting_type"), row.get("project_code"), int(approved),
-                int(anonymized), approved_by or getpass.getuser(), now if approved else None, now,
+                row.get("source_sha256"),
+                row.get("source_type") or "vtt",
+                metadata.get("meeting_type"),
+                row.get("project_code"),
+                client_scope,
+                int(approved),
+                int(anonymized),
+                approved_by or getpass.getuser(),
+                now if approved else None,
+                None if approved else "Excluido al registrar",
+                now,
             )
             if existing:
                 db.execute(
                     """UPDATE learning_samples SET source_sha256=?, source_type=?, meeting_type=?,
-                       project_code=?, approved=?, anonymized=?, approved_by=?, approved_at=?, created_at=?
-                       WHERE id=?""",
+                       project_code=?, client_scope=?, approved=?, anonymized=?, approved_by=?,
+                       approved_at=?, excluded_reason=?, created_at=? WHERE id=?""",
                     values + (int(existing[0]),),
                 )
                 return int(existing[0])
             cursor = db.execute(
                 """
                 INSERT INTO learning_samples(
-                    meeting_id, source_sha256, source_type, meeting_type, project_code, approved,
-                    anonymized, approved_by, approved_at, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    meeting_id, source_sha256, source_type, meeting_type, project_code,
+                    client_scope, approved, anonymized, approved_by, approved_at,
+                    excluded_reason, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (meeting_id,) + values,
             )

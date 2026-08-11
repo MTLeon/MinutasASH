@@ -94,7 +94,9 @@ class ProvisioningWizard(tk.Tk):
         self.title("Configuración inicial de Minutas ASH")
         with contextlib.suppress(tk.TclError, OSError):
             self.iconbitmap(str(resource_path("assets/ash.ico")))
-        configure_resizable_window(self, None, "provisioning", "720x520", (640, 440), transient=False)
+        configure_resizable_window(
+            self, None, "provisioning", "720x520", (640, 440), transient=False
+        )
         self.protocol("WM_DELETE_WINDOW", self._close)
 
         style = ttk.Style(self)
@@ -257,15 +259,21 @@ class ProvisioningWizard(tk.Tk):
                 )
                 installed = client.list_models()
                 if model not in installed:
-                    self.worker_queue.put(("status", (35, "Descargando perfil de procesamiento...")))
-                    self.worker_queue.put(("log", "Descarga inicial en curso. No cierre esta ventana."))
+                    self.worker_queue.put(
+                        ("status", (35, "Descargando perfil de procesamiento..."))
+                    )
+                    self.worker_queue.put(
+                        ("log", "Descarga inicial en curso. No cierre esta ventana.")
+                    )
 
                     def model_progress(value: int, _text: str) -> None:
                         mapped = 35 + int(value * 0.57)
-                        self.worker_queue.put((
-                            "status",
-                            (mapped, f"Preparando perfil de procesamiento... {value}%"),
-                        ))
+                        self.worker_queue.put(
+                            (
+                                "status",
+                                (mapped, f"Preparando perfil de procesamiento... {value}%"),
+                            )
+                        )
 
                     pull_model_stream(
                         base_url,
@@ -302,7 +310,9 @@ class ProvisioningWizard(tk.Tk):
                     )
                     self.result_code = 0
                     self.running = False
-                    self.cancel_button.configure(text="Finalizar", state="normal", command=self._finish)
+                    self.cancel_button.configure(
+                        text="Finalizar", state="normal", command=self._finish
+                    )
                     self.start_button.pack_forget()
                     if self.launch_after:
                         self.after(900, self._finish)

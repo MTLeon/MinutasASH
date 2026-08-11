@@ -14,18 +14,26 @@ from src.settings import AppSettings, load_settings
 class SettingsTests(unittest.TestCase):
     def test_defaults_are_valid(self):
         settings = AppSettings()
-        self.assertEqual(settings.app_version, "2.3.3")
-        self.assertEqual(settings.release_sequence, 2003003)
+        self.assertEqual(settings.app_version, "2.3.4")
+        self.assertEqual(settings.release_sequence, 2003004)
         self.assertEqual(settings.schema_version, 6)
         self.assertEqual(settings.runtime_mode, "auto")
         self.assertTrue(settings.managed_runtime_url.startswith("https://"))
         self.assertEqual(settings.processing_provider, "ollama_local")
         self.assertEqual(settings.appearance_theme, "system")
+        self.assertEqual(
+            AppSettings(appearance_theme="high_contrast").appearance_theme, "high_contrast"
+        )
         self.assertTrue(settings.semantic_guard_enabled)
         self.assertGreaterEqual(settings.semantic_guard_min_coverage, 0.8)
         self.assertEqual(settings.interface_mode, "essential")
         self.assertTrue(settings.quick_detect_participants)
         self.assertTrue(settings.review_focus_attention)
+        self.assertEqual(settings.whisper_model, "base")
+        self.assertFalse(settings.diarization_enabled)
+        self.assertTrue(settings.transcription_quality_warning)
+        self.assertFalse(settings.teams_graph_enabled)
+        self.assertEqual(settings.teams_graph_tenant_id, "organizations")
 
     def test_rejects_remote_service_url(self):
         with self.assertRaises(ValidationError):
@@ -40,23 +48,25 @@ class SettingsTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             user_config = Path(directory) / "config.json"
             user_config.write_text(
-                json.dumps({
-                    "app_version": "5.1.1",
-                    "schema_version": 2,
-                    "release_sequence": 9999999,
-                    "appearance_theme": "dark",
-                }),
+                json.dumps(
+                    {
+                        "app_version": "5.1.1",
+                        "schema_version": 2,
+                        "release_sequence": 9999999,
+                        "appearance_theme": "dark",
+                    }
+                ),
                 encoding="utf-8",
             )
-            with patch("src.settings.config_path", return_value=user_config), patch(
-                "src.settings.resource_path", return_value=root / "config.json"
+            with (
+                patch("src.settings.config_path", return_value=user_config),
+                patch("src.settings.resource_path", return_value=root / "config.json"),
             ):
                 settings = load_settings()
-        self.assertEqual(settings.app_version, "2.3.3")
+        self.assertEqual(settings.app_version, "2.3.4")
         self.assertEqual(settings.schema_version, 6)
-        self.assertEqual(settings.release_sequence, 2003003)
+        self.assertEqual(settings.release_sequence, 2003004)
         self.assertEqual(settings.appearance_theme, "dark")
-
 
 
 if __name__ == "__main__":

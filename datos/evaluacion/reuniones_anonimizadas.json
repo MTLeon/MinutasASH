@@ -1,0 +1,340 @@
+{
+  "corpus_id": "ash-reuniones-anonimizadas",
+  "version": "1.0.0",
+  "anonymized": true,
+  "cases": [
+    {
+      "case_id": "ASH-EVAL-001",
+      "title": "Compromiso explícito con responsable y plazo",
+      "project_code": "P9001",
+      "turns": [
+        {
+          "start": "00:00:10",
+          "end": "00:00:14",
+          "speaker": "Persona A",
+          "text": "Yo enviaré los planos eléctricos el viernes."
+        }
+      ],
+      "expected_items": [
+        {
+          "category": "compromiso",
+          "description": "Persona A enviará los planos eléctricos",
+          "responsible": "Persona A",
+          "due_date_text": "viernes",
+          "evidence": "00:00:10"
+        }
+      ]
+    },
+    {
+      "case_id": "ASH-EVAL-002",
+      "title": "Decisión sin responsable",
+      "project_code": "P9001",
+      "turns": [
+        {
+          "start": "00:01:00",
+          "end": "00:01:04",
+          "speaker": "Persona B",
+          "text": "Se acuerda mantener la solución de dos tableros."
+        }
+      ],
+      "expected_items": [
+        {
+          "category": "acuerdo",
+          "description": "Mantener la solución de dos tableros",
+          "evidence": "00:01:00"
+        }
+      ]
+    },
+    {
+      "case_id": "ASH-EVAL-003",
+      "title": "Pendiente de confirmación",
+      "turns": [
+        {
+          "start": "00:02:00",
+          "end": "00:02:04",
+          "speaker": "Persona C",
+          "text": "Queda pendiente confirmar la cantidad de señales analógicas."
+        }
+      ],
+      "expected_items": [
+        {
+          "category": "pendiente",
+          "description": "Confirmar la cantidad de señales analógicas",
+          "evidence": "00:02:00"
+        }
+      ]
+    },
+    {
+      "case_id": "ASH-EVAL-004",
+      "title": "Riesgo informado",
+      "turns": [
+        {
+          "start": "00:03:00",
+          "end": "00:03:04",
+          "speaker": "Persona D",
+          "text": "Existe riesgo de atraso por la indisponibilidad del equipo importado."
+        }
+      ],
+      "expected_items": [
+        {
+          "category": "informativo",
+          "description": "Riesgo de atraso por indisponibilidad del equipo importado",
+          "evidence": "00:03:00"
+        }
+      ]
+    },
+    {
+      "case_id": "ASH-EVAL-005",
+      "title": "Saludos y prueba de audio",
+      "turns": [
+        {
+          "start": "00:00:01",
+          "end": "00:00:05",
+          "speaker": "Persona A",
+          "text": "Buenos días, ¿me escuchan?"
+        },
+        {
+          "start": "00:00:06",
+          "end": "00:00:10",
+          "speaker": "Persona B",
+          "text": "Sí, se escucha bien."
+        }
+      ],
+      "expected_items": [],
+      "excluded_phrases": [
+        "Buenos días",
+        "se escucha bien"
+      ]
+    },
+    {
+      "case_id": "ASH-EVAL-006",
+      "title": "Sugerencia vaga no aprobada",
+      "turns": [
+        {
+          "start": "00:04:00",
+          "end": "00:04:04",
+          "speaker": "Persona A",
+          "text": "Quizás podríamos revisar el color algún día, pero no decidimos nada."
+        }
+      ],
+      "expected_items": [],
+      "excluded_phrases": [
+        "revisar el color",
+        "decidimos"
+      ]
+    },
+    {
+      "case_id": "ASH-EVAL-007",
+      "title": "Dos compromisos independientes",
+      "turns": [
+        {
+          "start": "00:05:00",
+          "end": "00:05:04",
+          "speaker": "Persona A",
+          "text": "Prepararé la matriz de interfaces para el martes."
+        },
+        {
+          "start": "00:05:10",
+          "end": "00:05:14",
+          "speaker": "Persona B",
+          "text": "Yo coordinaré la reunión con operaciones mañana."
+        }
+      ],
+      "expected_items": [
+        {
+          "category": "compromiso",
+          "description": "Preparar la matriz de interfaces",
+          "responsible": "Persona A",
+          "due_date_text": "martes"
+        },
+        {
+          "category": "compromiso",
+          "description": "Coordinar la reunión con operaciones",
+          "responsible": "Persona B",
+          "due_date_text": "mañana"
+        }
+      ]
+    },
+    {
+      "case_id": "ASH-EVAL-008",
+      "title": "Compromiso del cliente",
+      "turns": [
+        {
+          "start": "00:06:00",
+          "end": "00:06:04",
+          "speaker": "Representante Cliente",
+          "text": "El cliente entregará los antecedentes topográficos el 20 de agosto."
+        }
+      ],
+      "expected_items": [
+        {
+          "category": "compromiso",
+          "description": "Entregar los antecedentes topográficos",
+          "responsible": "Cliente",
+          "due_date_text": "20 de agosto"
+        }
+      ]
+    },
+    {
+      "case_id": "ASH-EVAL-009",
+      "title": "Próxima reunión",
+      "turns": [
+        {
+          "start": "00:07:00",
+          "end": "00:07:04",
+          "speaker": "Persona C",
+          "text": "La próxima reunión será el jueves a las diez."
+        }
+      ],
+      "expected_items": [
+        {
+          "category": "informativo",
+          "description": "Próxima reunión el jueves a las diez",
+          "due_date_text": "jueves"
+        }
+      ]
+    },
+    {
+      "case_id": "ASH-EVAL-010",
+      "title": "Contexto multiproyecto",
+      "meeting_type": "cartera",
+      "turns": [
+        {
+          "start": "00:08:00",
+          "end": "00:08:04",
+          "speaker": "Persona A",
+          "text": "Para P9002, revisaré el presupuesto mañana."
+        },
+        {
+          "start": "00:08:12",
+          "end": "00:08:16",
+          "speaker": "Persona B",
+          "text": "En P9003 queda pendiente la orden de compra."
+        }
+      ],
+      "expected_items": [
+        {
+          "category": "compromiso",
+          "description": "Revisar el presupuesto",
+          "project_code": "P9002",
+          "responsible": "Persona A",
+          "due_date_text": "mañana"
+        },
+        {
+          "category": "pendiente",
+          "description": "Confirmar la orden de compra",
+          "project_code": "P9003"
+        }
+      ]
+    },
+    {
+      "case_id": "ASH-EVAL-011",
+      "title": "Repetición que no debe duplicarse",
+      "turns": [
+        {
+          "start": "00:09:00",
+          "end": "00:09:04",
+          "speaker": "Persona A",
+          "text": "Enviaré el informe el lunes."
+        },
+        {
+          "start": "00:09:08",
+          "end": "00:09:12",
+          "speaker": "Persona A",
+          "text": "Repito: el informe lo envío el lunes."
+        }
+      ],
+      "expected_items": [
+        {
+          "category": "compromiso",
+          "description": "Enviar el informe",
+          "responsible": "Persona A",
+          "due_date_text": "lunes"
+        }
+      ]
+    },
+    {
+      "case_id": "ASH-EVAL-012",
+      "title": "Negación explícita",
+      "turns": [
+        {
+          "start": "00:10:00",
+          "end": "00:10:04",
+          "speaker": "Persona B",
+          "text": "No acordamos cambiar el alcance y nadie quedó encargado."
+        }
+      ],
+      "expected_items": [],
+      "excluded_phrases": [
+        "cambiar el alcance",
+        "quedó encargado"
+      ]
+    },
+    {
+      "case_id": "ASH-EVAL-013",
+      "title": "Dependencia externa",
+      "turns": [
+        {
+          "start": "00:11:00",
+          "end": "00:11:04",
+          "speaker": "Persona D",
+          "text": "Dependemos de la aprobación ambiental antes de iniciar las obras."
+        }
+      ],
+      "expected_items": [
+        {
+          "category": "pendiente",
+          "description": "Obtener la aprobación ambiental antes de iniciar las obras"
+        }
+      ]
+    },
+    {
+      "case_id": "ASH-EVAL-014",
+      "title": "Estado y pendiente separados",
+      "turns": [
+        {
+          "start": "00:12:00",
+          "end": "00:12:04",
+          "speaker": "Persona A",
+          "text": "La ingeniería básica está terminada."
+        },
+        {
+          "start": "00:12:10",
+          "end": "00:12:14",
+          "speaker": "Persona C",
+          "text": "Nos falta confirmar la capacidad del transformador."
+        }
+      ],
+      "expected_items": [
+        {
+          "category": "informativo",
+          "description": "Ingeniería básica terminada"
+        },
+        {
+          "category": "pendiente",
+          "description": "Confirmar la capacidad del transformador"
+        }
+      ]
+    },
+    {
+      "case_id": "ASH-EVAL-015",
+      "title": "Compromiso coloquial en primera persona",
+      "turns": [
+        {
+          "start": "00:13:00",
+          "end": "00:13:04",
+          "speaker": "Persona B",
+          "text": "Yo lo voy a llamar hoy para validar la entrega."
+        }
+      ],
+      "expected_items": [
+        {
+          "category": "compromiso",
+          "description": "Llamar para validar la entrega",
+          "responsible": "Persona B",
+          "due_date_text": "hoy"
+        }
+      ]
+    }
+  ]
+}

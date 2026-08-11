@@ -1,6 +1,6 @@
 [project]
 name = "minutas-ash"
-version = "2.3.3"
+version = "2.3.4"
 description = "Aplicación de escritorio para preparar minutas corporativas ASH desde transcripciones de Microsoft Teams."
 requires-python = ">=3.12,<3.15"
 dependencies = [
@@ -9,6 +9,9 @@ dependencies = [
   "python-docx>=1.1,<2",
   "tkinterdnd2>=0.4.3,<1",
   "openpyxl>=3.1,<4",
+  "pypdf>=6.15,<7",
+  "reportlab>=4.4,<5",
+  "msal>=1.31,<2",
 ]
 
 [tool.pytest.ini_options]
@@ -63,5 +66,5 @@ no_implicit_optional = true
 exclude = "^(build|dist|dist_installer|\\.buildvenv|\\.venv)/"
 
 [[tool.mypy.overrides]]
-module = ["openpyxl.*"]
+module = ["openpyxl.*", "msal.*"]
 ignore_missing_imports = true

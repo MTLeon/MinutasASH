@@ -13,17 +13,19 @@ class ProjectProfileTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             db = AppDatabase(Path(directory) / "minutas.db")
             db.upsert_contact(Attendee(name="Ana Pérez", organization="ASH"))
-            db.upsert_project_profile({
-                "code": "P3261",
-                "description": "Integración de tableros",
-                "client": "Cliente",
-                "project_manager": "Ana Pérez",
-                "approver": "Jefatura",
-                "default_minute_taker": "Ana Pérez",
-                "default_location": "Microsoft Teams",
-                "document_type": "MRE",
-                "discipline": "PR",
-            })
+            db.upsert_project_profile(
+                {
+                    "code": "P3261",
+                    "description": "Integración de tableros",
+                    "client": "Cliente",
+                    "project_manager": "Ana Pérez",
+                    "approver": "Jefatura",
+                    "default_minute_taker": "Ana Pérez",
+                    "default_location": "Microsoft Teams",
+                    "document_type": "MRE",
+                    "discipline": "PR",
+                }
+            )
             db.set_project_members("P3261", ["Ana Pérez"])
             profile = db.get_project("p3261")
             self.assertEqual(profile["client"], "Cliente")

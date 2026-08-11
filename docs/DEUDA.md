@@ -4,15 +4,15 @@ Este registro contiene deuda observada que no debe corregirse mediante cambios m
 
 | ID | Prioridad | Área | Evidencia | Tratamiento propuesto | Estado |
 |---|---|---|---|---|---|
-| DT-001 | Crítica | Trazabilidad | La carpeta de trabajo no contiene un repositorio Git válido. | Recuperar la historia original o inicializar el repositorio antes de nuevas releases. | Pendiente |
+| DT-001 | Crítica | Trazabilidad | El repositorio Git está disponible y permite auditar el árbol de trabajo. | Mantener historia y revisión de cambios antes de cada release. | Cerrada |
 | DT-002 | Alta | Entorno | `.venv` no contiene herramientas ni todas las dependencias declaradas. | Reconstruir con `scripts/Bootstrap-Dev.ps1` y validar imports. | Cerrada |
 | DT-003 | Alta | Calidad | No existe una puerta local única equivalente a CI. | Adoptar `scripts/Quality.ps1` como comando oficial. | Cerrada |
 | DT-004 | Alta | Arquitectura | `gui.py`, `legacy_gui.py` y `database.py` superan ampliamente 500 líneas. | Extraer casos de uso y repositorios de manera incremental. | Pendiente |
 | DT-005 | Alta | Errores | Existen excepciones generales silenciadas sin registro. | Clasificar cada caso y registrar o justificar explícitamente. | Pendiente |
-| DT-006 | Media | Cobertura | Umbral global de 65 %, inferior al objetivo del manual. | Subir a 70 % y luego a 80 % sin excluir núcleo crítico. | Pendiente |
+| DT-006 | Media | Cobertura | La suite alcanza 71,38 %, pero la puerta mínima continúa en 65 %. | Elevar gradualmente la puerta a 70 % y después a 80 % sin excluir núcleo crítico. | En progreso |
 | DT-007 | Media | Estructura | El paquete raíz se denomina `src` y mezcla capas. | Migrar gradualmente a `src/minutas_ash` con adaptadores temporales. | Pendiente |
-| DT-008 | Media | Releases | No hay pruebas automáticas de instalación, actualización y desinstalación. | Crear smoke tests Windows sobre artefactos firmados. | Pendiente |
-| DT-009 | Media | Dependencias | No existe bloqueo reproducible completo del runtime y desarrollo. | Adoptar `uv.lock` o archivos lock con hashes. | Pendiente |
+| DT-008 | Media | Releases | Existe smoke reproducible de instalación, arranque y desinstalación; falta actualización, firma y VM limpia. | Extender `scripts/Test-InstallerSmoke.ps1` cuando haya certificado y máquina piloto. | En progreso |
+| DT-009 | Media | Dependencias | La construcción usa `requirements-build-lock.txt` fijado; runtime/desarrollo aún no tienen hashes completos. | Completar lock con hashes y actualización controlada. | En progreso |
 
 ## Criterio de cierre
 

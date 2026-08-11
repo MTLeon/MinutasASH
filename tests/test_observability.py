@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from src.observability import configure_logger, failure_record, operation
+from src.observability import configure_logger, failure_record, operation, sanitize_text
 
 
 class ObservabilityTests(unittest.TestCase):
@@ -31,6 +31,15 @@ class ObservabilityTests(unittest.TestCase):
 
         self.assertIn("op=meeting-42", content)
         self.assertIn("processing_started", content)
+
+    def test_sensitive_values_are_redacted(self):
+        value = sanitize_text(
+            "api_key=super-secret Authorization: Bearer abc123 usuario@cliente.cl"
+        )
+        self.assertNotIn("super-secret", value)
+        self.assertNotIn("abc123", value)
+        self.assertNotIn("usuario@cliente.cl", value)
+        self.assertIn("<redacted>", value)
 
     def test_failure_record_is_machine_readable(self):
         with operation("operation-7"):

@@ -45,6 +45,7 @@ class HistoryService:
 
         artifacts = [
             self._resolved_or_none(row.get("docx_path")),
+            self._resolved_or_none(row.get("pdf_path")),
             self._resolved_or_none(row.get("json_path")),
         ]
         existing_artifacts = [item for item in artifacts if item and item.is_file()]
@@ -95,7 +96,9 @@ class HistoryService:
             original.parent.mkdir(parents=True, exist_ok=True)
             restored = original
             if restored.exists():
-                restored = restored.with_name(f"{restored.name}_RESTAURADA_{datetime.now():%Y%m%d_%H%M%S}")
+                restored = restored.with_name(
+                    f"{restored.name}_RESTAURADA_{datetime.now():%Y%m%d_%H%M%S}"
+                )
             shutil.move(str(trash_path), str(restored))
         self.database.restore_meeting_from_trash(
             meeting_id,
@@ -114,6 +117,8 @@ class HistoryService:
             try:
                 trash_path.relative_to(root)
             except ValueError as exc:
-                raise ValueError("La carpeta indicada no pertenece a la papelera de Minutas ASH.") from exc
+                raise ValueError(
+                    "La carpeta indicada no pertenece a la papelera de Minutas ASH."
+                ) from exc
             shutil.rmtree(trash_path)
         self.database.delete_meeting_permanently(meeting_id)

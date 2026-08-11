@@ -36,9 +36,7 @@ class FakeSession:
         self.closed = False
 
     def post(self, url, json=None, stream=None, timeout=None):
-        self.requests.append(
-            {"url": url, "json": json, "stream": stream, "timeout": timeout}
-        )
+        self.requests.append({"url": url, "json": json, "stream": stream, "timeout": timeout})
         return self.responses.pop(0)
 
     def close(self) -> None:
@@ -74,12 +72,8 @@ class OllamaStreaming232Tests(unittest.TestCase):
         self.assertEqual(finished[0].get("stage"), "unit")
 
     def test_invalid_schema_is_retried_with_a_new_stream(self) -> None:
-        first = FakeResponse(
-            [{"message": {"content": '{"wrong": 1}'}, "done": True}]
-        )
-        second = FakeResponse(
-            [{"message": {"content": '{"value": "fixed"}'}, "done": True}]
-        )
+        first = FakeResponse([{"message": {"content": '{"wrong": 1}'}, "done": True}])
+        second = FakeResponse([{"message": {"content": '{"value": "fixed"}'}, "done": True}])
         session = FakeSession([first, second])
         events: list[dict] = []
         client = OllamaClient("http://127.0.0.1:11434", "fake", timeout_seconds=60)
@@ -88,9 +82,7 @@ class OllamaStreaming232Tests(unittest.TestCase):
             result = client.structured_chat("system", "user", SampleOutput)
         self.assertEqual(result.value, "fixed")
         self.assertEqual(len(session.requests), 2)
-        self.assertTrue(
-            any(event.get("type") == "schema_validation_failed" for event in events)
-        )
+        self.assertTrue(any(event.get("type") == "schema_validation_failed" for event in events))
 
 
 if __name__ == "__main__":

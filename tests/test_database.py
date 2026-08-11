@@ -41,7 +41,6 @@ class DatabaseTests(unittest.TestCase):
             self.assertEqual(len(examples), 1)
             self.assertEqual(examples[0]["project_code"], "P3261")
 
-
     def test_save_meeting_accepts_missing_project_code(self):
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / "meeting.vtt"
@@ -58,5 +57,7 @@ class DatabaseTests(unittest.TestCase):
 
             row = db.get_meeting(meeting_id)
             self.assertEqual(row["project_code"], "")
+
+
 if __name__ == "__main__":
     unittest.main()

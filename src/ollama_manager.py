@@ -220,7 +220,9 @@ def download_managed_runtime(
 
     log("Descargando el componente local desde la distribución oficial...")
     try:
-        with requests.get(url, stream=True, timeout=(30, timeout_seconds), allow_redirects=True) as response:
+        with requests.get(
+            url, stream=True, timeout=(30, timeout_seconds), allow_redirects=True
+        ) as response:
             response.raise_for_status()
             total = int(response.headers.get("content-length") or 0)
             completed = 0
@@ -242,7 +244,9 @@ def download_managed_runtime(
 
     if final_archive.stat().st_size < minimum_bytes:
         final_archive.unlink(missing_ok=True)
-        raise RuntimePreparationError("La descarga terminó incompleta o no corresponde al paquete esperado.")
+        raise RuntimePreparationError(
+            "La descarga terminó incompleta o no corresponde al paquete esperado."
+        )
     if not zipfile.is_zipfile(final_archive):
         final_archive.unlink(missing_ok=True)
         raise RuntimePreparationError("El archivo descargado no es un paquete ZIP válido.")
@@ -254,7 +258,9 @@ def download_managed_runtime(
         _safe_extract_zip(final_archive, extracted)
         candidates = list(extracted.rglob("ollama.exe"))
         if not candidates:
-            raise RuntimePreparationError("El paquete descargado no contiene el ejecutable requerido.")
+            raise RuntimePreparationError(
+                "El paquete descargado no contiene el ejecutable requerido."
+            )
 
         source_root = candidates[0].parent
         staged = parent / "ollama_staged"
@@ -307,9 +313,7 @@ def list_models(base_url: str) -> list[str]:
     response = requests.get(f"{base_url.rstrip('/')}/api/tags", timeout=15)
     response.raise_for_status()
     return sorted(
-        item.get("name")
-        for item in response.json().get("models", [])
-        if item.get("name")
+        item.get("name") for item in response.json().get("models", []) if item.get("name")
     )
 
 

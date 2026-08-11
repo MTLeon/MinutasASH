@@ -6,9 +6,38 @@ import unicodedata
 from src.models import MeetingItem, MeetingMetadata, MinuteAnalysis
 
 _STOPWORDS = {
-    "a", "al", "con", "de", "del", "durante", "el", "en", "la", "las",
-    "lo", "los", "para", "por", "que", "se", "su", "un", "una", "y",
+    "a",
+    "al",
+    "con",
+    "de",
+    "del",
+    "durante",
+    "el",
+    "en",
+    "la",
+    "las",
+    "lo",
+    "los",
+    "para",
+    "por",
+    "que",
+    "se",
+    "su",
+    "un",
+    "una",
+    "y",
 }
+
+_EXPLICIT_REJECTION_RE = re.compile(
+    r"\b(?:no (?:se )?(?:acordo|acordamos|decidio|decidimos|aprobo|aprobamos)"
+    r"|no se asigno (?:un )?responsable|sin responsable asignado"
+    r"|nadie quedo (?:encargado|responsable)|no se tomo ninguna decision)\b"
+)
+_TENTATIVE_RE = re.compile(r"\b(?:quizas|tal vez|podriamos|se menciono la posibilidad)\b")
+_TENTATIVE_DISMISSAL_RE = re.compile(
+    r"\b(?:algun dia|mas adelante|no (?:se )?(?:decidio|acordo|aprobo)"
+    r"|no se tomo ninguna decision)\b"
+)
 
 
 def _norm(value: str | None) -> str:
@@ -18,11 +47,7 @@ def _norm(value: str | None) -> str:
 
 
 def _tokens(value: str | None) -> set[str]:
-    return {
-        token
-        for token in re.findall(r"[a-z0-9]{2,}", _norm(value))
-        if token not in _STOPWORDS
-    }
+    return {token for token in re.findall(r"[a-z0-9]{2,}", _norm(value)) if token not in _STOPWORDS}
 
 
 def _similarity(left: str | None, right: str | None) -> float:
@@ -31,6 +56,14 @@ def _similarity(left: str | None, right: str | None) -> float:
     if not left_tokens or not right_tokens:
         return 0.0
     return len(left_tokens & right_tokens) / max(1, min(len(left_tokens), len(right_tokens)))
+
+
+def _is_explicitly_non_actionable(item: MeetingItem) -> bool:
+    text = _norm(" ".join(part for part in (item.title, item.description) if part))
+    return bool(
+        _EXPLICIT_REJECTION_RE.search(text)
+        or (_TENTATIVE_RE.search(text) and _TENTATIVE_DISMISSAL_RE.search(text))
+    )
 
 
 def _resolve_responsible(value: str | None, metadata: MeetingMetadata) -> str | None:
@@ -84,12 +117,21 @@ def normalize_analysis(analysis: MinuteAnalysis, metadata: MeetingMetadata) -> M
     warnings = list(analysis.warnings)
 
     for item in analysis.items:
+        if _is_explicitly_non_actionable(item):
+            warnings.append(
+                f"Punto descartado por negacion o falta de aprobacion explicita: {item.description}"
+            )
+            continue
         item.responsible = _resolve_responsible(item.responsible, metadata)
         duplicate: MeetingItem | None = None
         for existing in items:
             if existing.category != item.category:
                 continue
-            if existing.project_code and item.project_code and existing.project_code != item.project_code:
+            if (
+                existing.project_code
+                and item.project_code
+                and existing.project_code != item.project_code
+            ):
                 continue
             similarity = _similarity(existing.description, item.description)
             same_reference = bool(
@@ -109,13 +151,9 @@ def normalize_analysis(analysis: MinuteAnalysis, metadata: MeetingMetadata) -> M
     # una segunda pasada sí logró completar.
     for item in items:
         if item.category == "compromiso" and not item.responsible:
-            warnings.append(
-                f"Compromiso sin responsable confirmado: {item.description}"
-            )
+            warnings.append(f"Compromiso sin responsable confirmado: {item.description}")
         if item.category == "compromiso" and not (item.due_date_text or item.due_date_iso):
-            warnings.append(
-                f"Compromiso sin plazo confirmado: {item.description}"
-            )
+            warnings.append(f"Compromiso sin plazo confirmado: {item.description}")
 
     analysis.items = items
     analysis.warnings = list(dict.fromkeys(warnings))

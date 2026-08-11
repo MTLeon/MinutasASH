@@ -81,6 +81,10 @@ def drafts_dir() -> Path:
     return user_data_root() / "drafts"
 
 
+def inbox_dir() -> Path:
+    return user_data_root() / "inbox"
+
+
 def cache_dir() -> Path:
     return user_data_root() / "cache"
 
@@ -89,6 +93,8 @@ def checkpoints_dir() -> Path:
     return user_data_root() / "checkpoints"
 
 
+def jobs_dir() -> Path:
+    return user_data_root() / "jobs"
 
 
 def managed_runtime_dir() -> Path:
@@ -105,7 +111,6 @@ def managed_models_dir() -> Path:
 
 def downloads_dir() -> Path:
     return user_data_root() / "downloads"
-
 
 
 def templates_dir() -> Path:
@@ -127,6 +132,7 @@ def support_dir() -> Path:
 def trash_dir() -> Path:
     return user_data_root() / "trash" / "meetings"
 
+
 def setup_state_path() -> Path:
     return user_data_root() / "setup_state.json"
 
@@ -141,8 +147,10 @@ def ensure_user_directories() -> None:
         database_path().parent,
         logs_dir(),
         drafts_dir(),
+        inbox_dir(),
         cache_dir(),
         checkpoints_dir(),
+        jobs_dir(),
         records_dir(),
         managed_runtime_dir(),
         managed_models_dir(),

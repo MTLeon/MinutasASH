@@ -1,15 +1,18 @@
 from __future__ import annotations
 
+import json
 import os
 import platform
 import shutil
 import sqlite3
 import tempfile
+import zipfile
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from src.observability import sanitize_text
 from src.ollama_manager import api_available, find_ollama_executable, list_models
 from src.processing_runtime import get_resource_snapshot
 from src.providers.registry import create_processing_provider, provider_display_name
@@ -25,10 +28,12 @@ from src.runtime_paths import (
     database_path,
     default_output_dir,
     is_frozen,
+    jobs_dir,
     logs_dir,
     managed_models_dir,
     managed_runtime_executable,
     records_dir,
+    support_dir,
     user_data_root,
 )
 from src.updater import update_source_is_configured
@@ -100,7 +105,9 @@ def _memory_bytes() -> int | None:
 def _writable_check(path: Path) -> tuple[bool, str]:
     try:
         path.mkdir(parents=True, exist_ok=True)
-        with tempfile.NamedTemporaryFile(prefix="minutas_", suffix=".tmp", dir=path, delete=False) as handle:
+        with tempfile.NamedTemporaryFile(
+            prefix="minutas_", suffix=".tmp", dir=path, delete=False
+        ) as handle:
             temporary = Path(handle.name)
             handle.write(b"ok")
         temporary.unlink(missing_ok=True)
@@ -162,14 +169,18 @@ def collect_diagnostics(config: dict[str, Any]) -> DiagnosticReport:
             detail += f"; {available:.1f} GB disponibles"
         threshold = float(config.get("memory_warning_percent", 88.0))
         critical = float(config.get("memory_critical_percent", 95.0))
-        status = "ERROR" if snapshot.memory_percent >= critical else (
-            "AVISO" if snapshot.memory_percent >= threshold else "OK"
+        status = (
+            "ERROR"
+            if snapshot.memory_percent >= critical
+            else ("AVISO" if snapshot.memory_percent >= threshold else "OK")
         )
         report.items.append(DiagnosticItem("Memoria disponible ahora", status, detail))
 
     checkpoint_path = checkpoints_dir()
     try:
-        checkpoint_count = len(list(checkpoint_path.glob("*.json"))) if checkpoint_path.exists() else 0
+        checkpoint_count = (
+            len(list(checkpoint_path.glob("*.json"))) if checkpoint_path.exists() else 0
+        )
     except OSError:
         checkpoint_count = -1
     report.items.append(
@@ -187,7 +198,9 @@ def collect_diagnostics(config: dict[str, Any]) -> DiagnosticReport:
 
     data_usage = shutil.disk_usage(user_data_root())
     free_gb = data_usage.free / 1024**3
-    required_gb = min(int(config.get("minimum_free_space_bytes", 7 * 1024**3)), 7 * 1024**3) / 1024**3
+    required_gb = (
+        min(int(config.get("minimum_free_space_bytes", 7 * 1024**3)), 7 * 1024**3) / 1024**3
+    )
     report.items.append(
         DiagnosticItem(
             "Espacio en datos locales",
@@ -217,7 +230,9 @@ def collect_diagnostics(config: dict[str, Any]) -> DiagnosticReport:
         provider = create_processing_provider(config, provider_id)
         provider.check_connection()
         report.items.append(
-            DiagnosticItem("Conexión del método", "OK", f"{provider.display_name}; perfil {provider.model}")
+            DiagnosticItem(
+                "Conexión del método", "OK", f"{provider.display_name}; perfil {provider.model}"
+            )
         )
     except Exception as exc:
         report.items.append(DiagnosticItem("Conexión del método", "ERROR", str(exc)))
@@ -252,7 +267,9 @@ def collect_diagnostics(config: dict[str, Any]) -> DiagnosticReport:
                 )
             )
         except Exception as exc:
-            report.items.append(DiagnosticItem("Perfil local", "ERROR" if local_required else "AVISO", str(exc)))
+            report.items.append(
+                DiagnosticItem("Perfil local", "ERROR" if local_required else "AVISO", str(exc))
+            )
     else:
         report.items.append(
             DiagnosticItem(
@@ -273,7 +290,9 @@ def collect_diagnostics(config: dict[str, Any]) -> DiagnosticReport:
         DiagnosticItem(
             "Actualizaciones",
             "OK" if update_source_is_configured(config) else "AVISO",
-            "Origen configurado" if update_source_is_configured(config) else "Aún no se configuró un origen de releases.",
+            "Origen configurado"
+            if update_source_is_configured(config)
+            else "Aún no se configuró un origen de releases.",
         )
     )
 
@@ -284,7 +303,9 @@ def collect_diagnostics(config: dict[str, Any]) -> DiagnosticReport:
                 row = db.execute("SELECT version FROM app_schema WHERE id=1").fetchone()
             detected_schema = int(row[0]) if row else 0
             schema_status = "OK" if detected_schema == DATABASE_SCHEMA_VERSION else "AVISO"
-            schema_detail = f"{db_path}; esquema {detected_schema}, esperado {DATABASE_SCHEMA_VERSION}."
+            schema_detail = (
+                f"{db_path}; esquema {detected_schema}, esperado {DATABASE_SCHEMA_VERSION}."
+            )
         except (sqlite3.Error, OSError, ValueError) as exc:
             schema_status = "AVISO"
             schema_detail = f"{db_path}; no fue posible leer la versión ({exc})."
@@ -294,7 +315,9 @@ def collect_diagnostics(config: dict[str, Any]) -> DiagnosticReport:
 
     report.items.extend(
         [
-            DiagnosticItem("Configuración", "OK" if config_path().exists() else "AVISO", str(config_path())),
+            DiagnosticItem(
+                "Configuración", "OK" if config_path().exists() else "AVISO", str(config_path())
+            ),
             DiagnosticItem("Base local", schema_status, schema_detail),
             DiagnosticItem(
                 "Experiencia guiada",
@@ -305,6 +328,87 @@ def collect_diagnostics(config: dict[str, Any]) -> DiagnosticReport:
         ]
     )
     return report
+
+
+def _sanitized_config(config: dict[str, Any]) -> dict[str, Any]:
+    sensitive = ("api_key", "secret", "token", "password", "credential")
+    return {
+        key: "<redacted>" if any(term in key.casefold() for term in sensitive) else value
+        for key, value in config.items()
+    }
+
+
+def _job_summaries(limit: int = 200) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    root = jobs_dir()
+    if not root.is_dir():
+        return rows
+    paths = sorted(root.glob("*.json"), key=lambda path: path.stat().st_mtime, reverse=True)
+    for path in paths[:limit]:
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, TypeError, json.JSONDecodeError):
+            continue
+        rows.append(
+            {
+                "job_id": payload.get("job_id"),
+                "source_name": Path(str(payload.get("source_path") or "")).name,
+                "provider_id": payload.get("provider_id"),
+                "model": payload.get("model"),
+                "status": payload.get("status"),
+                "progress": payload.get("progress"),
+                "created_at": payload.get("created_at"),
+                "updated_at": payload.get("updated_at"),
+                "started_at": payload.get("started_at"),
+                "finished_at": payload.get("finished_at"),
+                "error": sanitize_text(payload.get("error") or ""),
+            }
+        )
+    return rows
+
+
+def save_diagnostic_bundle(config: dict[str, Any]) -> Path:
+    """Crea un ZIP de soporte sin base de datos, fuentes ni credenciales."""
+
+    report = collect_diagnostics(config)
+    destination = support_dir()
+    destination.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    path = destination / f"diagnostico_minutas_{timestamp}.zip"
+    jobs = _job_summaries()
+    provider_failures: dict[str, int] = {}
+    for row in jobs:
+        if row.get("status") == "failed":
+            provider = str(row.get("provider_id") or "desconocido")
+            provider_failures[provider] = provider_failures.get(provider, 0) + 1
+    with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("diagnostico.txt", report.to_text())
+        archive.writestr(
+            "configuracion_sanitizada.json",
+            json.dumps(_sanitized_config(config), ensure_ascii=False, indent=2, default=str),
+        )
+        archive.writestr(
+            "trabajos.json",
+            json.dumps(jobs, ensure_ascii=False, indent=2),
+        )
+        archive.writestr(
+            "errores_por_proveedor.json",
+            json.dumps(provider_failures, ensure_ascii=False, indent=2),
+        )
+        root = logs_dir()
+        if root.is_dir():
+            for log_path in sorted(root.glob("MinutasASH.log*"))[:6]:
+                try:
+                    content = log_path.read_text(encoding="utf-8", errors="replace")[-2_000_000:]
+                except OSError:
+                    continue
+                archive.writestr(f"logs/{log_path.name}.sanitizado.txt", sanitize_text(content))
+        archive.writestr(
+            "LEAME.txt",
+            "Este paquete excluye la base de datos y las transcripciones. "
+            "Aun así, revise el contenido antes de compartirlo con soporte.\n",
+        )
+    return path
 
 
 def save_diagnostic_report(config: dict[str, Any]) -> Path:

@@ -58,11 +58,15 @@ class DatabaseMigrationTests(unittest.TestCase):
             connection.close()
             self.assertIn("source_sha256", columns)
             self.assertIn("document_provider", columns)
+            self.assertIn("pdf_path", columns)
             self.assertIn("processing_provider", columns)
             self.assertIn("processing_provider_name", columns)
             connection = sqlite3.connect(path)
             project_columns = {row[1] for row in connection.execute("PRAGMA table_info(projects)")}
-            tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            tables = {
+                row[0]
+                for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            }
             connection.close()
             self.assertIn("document_type", project_columns)
             self.assertIn("discipline", project_columns)

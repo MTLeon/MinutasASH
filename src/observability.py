@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import sys
 import threading
 from collections.abc import Callable, Iterator
@@ -15,6 +16,23 @@ from types import TracebackType
 from uuid import uuid4
 
 _operation_id: ContextVar[str] = ContextVar("minutas_operation_id", default="startup")
+_SENSITIVE_PATTERNS = (
+    (re.compile(r"(?i)(authorization\s*[:=]\s*bearer\s+)[^\s,;]+"), r"\1<redacted>"),
+    (re.compile(r"(?i)((?:api[_-]?key|token|secret|password)\s*[:=]\s*)[^\s,;]+"), r"\1<redacted>"),
+    (re.compile(r"(?i)\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b"), "<email-redacted>"),
+)
+
+
+def sanitize_text(value: object) -> str:
+    result = str(value)
+    for pattern, replacement in _SENSITIVE_PATTERNS:
+        result = pattern.sub(replacement, result)
+    return result
+
+
+class SanitizingFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        return sanitize_text(super().format(record))
 
 
 @dataclass(frozen=True)
@@ -60,7 +78,7 @@ def configure_logger(log_directory: Path, *, level: int = logging.INFO) -> loggi
     )
     handler.addFilter(OperationFilter())
     handler.setFormatter(
-        logging.Formatter(
+        SanitizingFormatter(
             "%(asctime)s | %(levelname)s | %(name)s | op=%(operation_id)s | %(message)s",
             datefmt="%Y-%m-%d %H:%M:%S",
         )

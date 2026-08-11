@@ -35,8 +35,6 @@ TelemetryCallback = Callable[[dict[str, Any]], None]
 CancelCallback = Callable[[], bool]
 
 
-
-
 class _TransientCheckpointStore:
     """Conserva la interfaz del store cuando el usuario desactiva checkpoints."""
 
@@ -142,7 +140,9 @@ def _chunk_to_minute(chunk: ChunkAnalysis) -> MinuteAnalysis:
 
 def _deterministic_merge(analyses: list[MinuteAnalysis]) -> MinuteAnalysis:
     objective = next((item.objective for item in analyses if item.objective), None)
-    summaries = [item.executive_summary.strip() for item in analyses if item.executive_summary.strip()]
+    summaries = [
+        item.executive_summary.strip() for item in analyses if item.executive_summary.strip()
+    ]
     items: list[MeetingItem] = []
     warnings: list[str] = []
     next_meeting = None
@@ -211,9 +211,7 @@ def _process_chunks(
     pipeline_started = monotonic()
 
     if resumed_blocks:
-        log(
-            f"Se reanudará el procesamiento: {resumed_blocks} bloque(s) ya estaban completos."
-        )
+        log(f"Se reanudará el procesamiento: {resumed_blocks} bloque(s) ya estaban completos.")
 
     try:
         while index < len(checkpoint.work_items):
@@ -233,7 +231,9 @@ def _process_chunks(
                     1 for work in checkpoint.work_items if str(work["id"]) in completed
                 )
                 value = 25 + int(43 * completed_count / max(len(checkpoint.work_items), 1))
-                progress(value, f"Reutilizando bloque {completed_count} de {len(checkpoint.work_items)}")
+                progress(
+                    value, f"Reutilizando bloque {completed_count} de {len(checkpoint.work_items)}"
+                )
                 continue
 
             attempt = int(checkpoint.retries.get(chunk_id, 0))
@@ -319,7 +319,7 @@ def _process_chunks(
                             }
                             for child_index, part in enumerate(parts, start=1)
                         ]
-                        checkpoint.work_items[index:index + 1] = children
+                        checkpoint.work_items[index : index + 1] = children
                         checkpoint.split_count += 1
                         checkpoint.status = "in_progress"
                         store.save(checkpoint)
@@ -382,7 +382,7 @@ def _process_chunks(
                             }
                             for child_index, part in enumerate(parts, start=1)
                         ]
-                        checkpoint.work_items[index:index + 1] = children
+                        checkpoint.work_items[index : index + 1] = children
                         checkpoint.split_count += 1
                         checkpoint.status = "in_progress"
                         store.save(checkpoint)
@@ -509,7 +509,7 @@ def _hierarchical_consolidation(
             profile.consolidation_batch_chars,
         )
         if len(groups) == len(current) and len(current) > 1:
-            groups = [current[index:index + 2] for index in range(0, len(current), 2)]
+            groups = [current[index : index + 2] for index in range(0, len(current), 2)]
         next_level: list[MinuteAnalysis] = []
         log(f"Consolidación jerárquica nivel {level}: {len(groups)} grupo(s).")
         for group_index, group in enumerate(groups, start=1):
@@ -610,9 +610,7 @@ def analyze_resilient_chunks(
     # pase de rápido a equilibrado (o viceversa). Así se conservan los bloques
     # ya completados.
     checkpoint_profile_id = (
-        "auto"
-        if plan.requested_profile == "auto"
-        else plan.effective_profile.profile_id
+        "auto" if plan.requested_profile == "auto" else plan.effective_profile.profile_id
     )
     key = stable_processing_key(
         source_sha,

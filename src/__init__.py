@@ -1,3 +1,3 @@
 """Minutas ASH — plataforma de gestión documental."""
 
-__version__ = "2.3.3"
+__version__ = "2.3.4"

@@ -9,7 +9,7 @@ Este contenido es para el computador de desarrollo, no para los usuarios finales
    CONSTRUIR_INSTALADOR_FINAL.bat
 
 3. Al terminar, distribuya únicamente:
-   dist_installer\MinutasASH_Setup_2.3.3_Online.exe
+   dist_installer\MinutasASH_Setup_2.3.4_Online.exe
 
 El usuario final no necesita Python, pip, archivos BAT ni acceso al código fuente.
 Durante la instalación se descarga el componente local oficial y se prepara el

@@ -37,7 +37,9 @@ class FakeProvider:
         self.telemetry = telemetry or (lambda _event: None)
         self.cancelled = cancelled or (lambda: False)
 
-    def configure_request(self, *, timeout_seconds=None, context_length=None, operation=None) -> None:
+    def configure_request(
+        self, *, timeout_seconds=None, context_length=None, operation=None
+    ) -> None:
         self.request_operations.append(dict(operation or {}))
 
     def structured_chat(self, _system_prompt, user_prompt, response_model):
@@ -276,7 +278,8 @@ class ResilientPipeline232Tests(unittest.TestCase):
             root = Path(temp)
             lines = [
                 f"[{index // 120:02d}:{(index // 2) % 60:02d}:{(index % 2) * 30:02d}] "
-                + f"Persona: seguimiento {index} " + "x" * 120
+                + f"Persona: seguimiento {index} "
+                + "x" * 120
                 for index in range(8 * 60 * 2)
             ]
             text = "\n".join(lines)

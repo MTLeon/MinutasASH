@@ -61,4 +61,4 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             gh release create $tag --title "Minutas ASH $tag" --generate-notes
           }
-          gh release upload $tag dist_installer\*.exe dist_installer\*SHA256*.txt docs\Manual_Maestro_2.3.3.md docs\Manual_Usuario_2.3.3.md docs\Manual_Configuracion_2.3.3.md docs\Manual_Programador_2.3.3.md plantillas\Plantilla_Marcadores_ASH_2.3.docx --clobber
+          gh release upload $tag dist_installer\*.exe dist_installer\*SHA256*.txt docs\Manual_Maestro_2.3.3.md docs\Manual_Usuario_2.3.3.md docs\Manual_Configuracion_2.3.3.md docs\Manual_Programador_2.3.3.md docs\QOL_TECLADO_Y_TABLAS_2.3.4.md docs\VALIDACION_2.3.4.md plantillas\Plantilla_Marcadores_ASH_2.3.docx --clobber

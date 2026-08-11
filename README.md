@@ -1,65 +1,57 @@
-# Minutas ASH 2.3.3
+# Minutas ASH 2.3.4
 
-Aplicación de escritorio para preparar, revisar y emitir minutas corporativas desde transcripciones y notas de reunión.
+Aplicación de escritorio para convertir transcripciones, documentos, audio, video y notas de reunión en minutas corporativas trazables, revisables y exportables.
 
-## Flujo esencial
+## Funciones principales
 
-1. Cargar VTT, TXT o DOCX; pegar conversación o crear notas.
-2. Completar proyecto/cartera, materia, fechas, redactor y número.
-3. Confirmar participantes.
-4. Procesar y revisar acuerdos, compromisos y pendientes.
-5. Generar Word.
+- Entrada unificada para VTT, SRT, TXT, DOCX, PDF, texto pegado, audio y video.
+- Procesamiento local con Ollama o remoto mediante proveedores configurables.
+- Whisper opcional, cola recuperable, carpeta vigilada y detección por hash.
+- Extracción estructurada de decisiones, compromisos, riesgos y pendientes con evidencia.
+- Revisión asistida, acciones masivas, historial, papelera y aprendizaje controlado.
+- Productividad mediante atajos, selección múltiple por teclado o arrastre, búsqueda, ordenamiento y deshacer.
+- Exportación DOCX/PDF, diagnóstico protegido y observabilidad operativa.
 
-## Novedades 2.3.3
+## Inicio para desarrollo
 
-- Selección múltiple de puntos con Ctrl/Shift.
-- Aprobar, descartar o devolver varios puntos en una sola acción.
-- Aprobar o descartar todos los resultados visibles después de buscar o filtrar.
-- Búsqueda instantánea en la revisión.
-- Deshacer la última acción con `Ctrl+Z`.
-- Menú contextual con clic derecho y `Ctrl+A` para seleccionar lo visible.
-- Confirmaciones masivas y avance automático configurables.
-- Ventanas secundarias redimensionables, con geometría recordada y recuperación dentro de pantalla.
-- Distribución visual adaptable y barra horizontal para tablas extensas.
-- Se conserva el procesamiento resiliente 2.3.2: bloques, checkpoints, reanudación, streaming y timeout adaptativo.
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+.\.venv\Scripts\python.exe -m src.gui
+```
 
-Se mantienen además las fuentes flexibles, reuniones multiproyecto, papelera, registros de prueba, diccionario técnico, aprendizaje supervisado, catálogos y plantillas administrables.
+## Calidad
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\Quality.ps1
+```
+
+La entrega 2.3.4 fue aprobada con 219 pruebas, 71,73 % de cobertura, análisis de tipos, lint, 75 escenarios visuales y smoke de instalación/desinstalación de los dos paquetes.
 
 ## Construcción Windows
 
-```bat
-CONSTRUIR_INSTALADOR_FINAL.bat
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File build_tools\Build-Complete-Installer.ps1
 ```
 
-Resultado:
+Artefactos locales, no versionados:
 
 ```text
-dist_installer\MinutasASH_Setup_2.3.3_Online.exe
-dist_installer\MinutasASH_Setup_2.3.3_Online_SHA256.txt
-```
-
-## Pruebas
-
-```powershell
-python -m compileall -q src tests
-python -m unittest discover -s tests -p "test_*.py" -v
+dist_installer\MinutasASH_Setup_2.3.4_Online.exe
+dist_installer\MinutasASH_Whisper_CPU_2.3.4.exe
 ```
 
 ## Documentación
 
-- `docs/Manual_Maestro_2.3.3.md`
-- `docs/Manual_Usuario_2.3.3.md`
-- `docs/Manual_Configuracion_2.3.3.md`
-- `docs/Manual_Programador_2.3.3.md`
-- `docs/PROCESAMIENTO_RESILIENTE_2.3.3.md`
-- `docs/NOTAS_VERSION_2.3.3.md`
-- `VALIDACION_2.3.3.md`
+- [Índice documental](docs/README.md)
+- [Manual maestro](docs/Manual_Maestro_2.3.3.md)
+- [Manual de usuario](docs/Manual_Usuario_2.3.3.md)
+- [Configuración](docs/Manual_Configuracion_2.3.3.md)
+- [Programación y depuración](docs/Manual_Programador_2.3.3.md)
+- [Atajos y productividad 2.3.4](docs/QOL_TECLADO_Y_TABLAS_2.3.4.md)
+- [Notas 2.3.4](docs/NOTAS_VERSION_2.3.4.md)
+- [Validación 2.3.4](docs/VALIDACION_2.3.4.md)
 
 ## Privacidad
 
-No incluya transcripciones, checkpoints, bases, documentos de clientes, respaldos ni credenciales en GitHub. Los fixtures deben ser sintéticos o anonimizados.
-
-
-## Guías adicionales
-
-- [Fuentes flexibles y aprendizaje local](docs/FUENTES_Y_APRENDIZAJE.md)
+No incluya transcripciones reales, bases de datos, checkpoints, documentos de clientes, diagnósticos, modelos, respaldos, credenciales ni certificados en GitHub. Los fixtures deben ser sintéticos o anonimizados.

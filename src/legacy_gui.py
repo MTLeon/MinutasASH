@@ -25,15 +25,17 @@ from pydantic import ValidationError
 
 from src.app_logging import get_logger
 from src.appearance import AppearanceManager
-from src.diagnostics import save_diagnostic_report
+from src.diagnostics import save_diagnostic_bundle
 from src.metadata import enrich_attendees, initials_from_name
 from src.models import Attendee, MeetingItem, MeetingMetadata, MinuteAnalysis
+from src.observability import operation
 from src.ollama_manager import (
     ensure_runtime,
     pull_model_stream,
     start_ollama,
 )
 from src.preferences import PreferencesDialog
+from src.processing_jobs import JobStatus, ProcessingJobStore
 from src.providers.registry import (
     configured_model,
     create_processing_provider,
@@ -66,7 +68,7 @@ from src.updater import (
 from src.vtt_reader import read_teams_vtt, unique_speakers
 from src.workflow import AnalysisBundle, analyze_meeting, generate_word_package
 
-APP_TITLE = "Minutas ASH 2.3.3"
+APP_TITLE = "Minutas ASH 2.3.4"
 DATE_HINT = "AAAA-MM-DD"
 
 
@@ -83,7 +85,9 @@ class AttendeeDialog(tk.Toplevel):
             "name": tk.StringVar(value=attendee.name if attendee else ""),
             "email": tk.StringVar(value=attendee.email or "" if attendee else ""),
             "role": tk.StringVar(value=attendee.role or "" if attendee else ""),
-            "organization": tk.StringVar(value=attendee.organization or "ASH" if attendee else "ASH"),
+            "organization": tk.StringVar(
+                value=attendee.organization or "ASH" if attendee else "ASH"
+            ),
         }
         frame = ttk.Frame(self, padding=14)
         frame.grid(sticky="nsew")
@@ -116,7 +120,9 @@ class AttendeeDialog(tk.Toplevel):
     def _save(self) -> None:
         name = self.vars["name"].get().strip()
         if not name:
-            messagebox.showwarning("Dato requerido", "Ingrese el nombre del asistente.", parent=self)
+            messagebox.showwarning(
+                "Dato requerido", "Ingrese el nombre del asistente.", parent=self
+            )
             return
         id_text = self.vars["id"].get().strip()
         try:
@@ -184,7 +190,9 @@ class ItemDialog(tk.Toplevel):
         ]
         for offset, (label, key) in enumerate(rows, start=3):
             ttk.Label(frame, text=label).grid(row=offset, column=0, sticky="w", pady=4)
-            ttk.Entry(frame, textvariable=self.vars[key]).grid(row=offset, column=1, sticky="ew", pady=4)
+            ttk.Entry(frame, textvariable=self.vars[key]).grid(
+                row=offset, column=1, sticky="ew", pady=4
+            )
 
         buttons = ttk.Frame(frame)
         buttons.grid(row=9, column=0, columnspan=2, sticky="e", pady=(12, 0))
@@ -204,7 +212,9 @@ class ItemDialog(tk.Toplevel):
             try:
                 datetime.strptime(due_iso, "%Y-%m-%d")
             except ValueError:
-                messagebox.showwarning("Fecha inválida", "La fecha ISO debe usar AAAA-MM-DD.", parent=self)
+                messagebox.showwarning(
+                    "Fecha inválida", "La fecha ISO debe usar AAAA-MM-DD.", parent=self
+                )
                 return
         self.result = MeetingItem(
             project_code=self.vars["project_code"].get().strip() or None,
@@ -269,15 +279,22 @@ class ContactPickerDialog(tk.Toplevel):
         query = self.search_var.get().strip().casefold()
         self.tree.delete(*self.tree.get_children())
         for index, contact in enumerate(self.contacts):
-            text = " ".join(filter(None, [contact.name, contact.email, contact.role, contact.organization])).casefold()
+            text = " ".join(
+                filter(None, [contact.name, contact.email, contact.role, contact.organization])
+            ).casefold()
             if query and query not in text:
                 continue
-            self.tree.insert("", "end", iid=str(index), values=(
-                contact.name,
-                contact.email or "",
-                contact.role or "",
-                contact.organization or "",
-            ))
+            self.tree.insert(
+                "",
+                "end",
+                iid=str(index),
+                values=(
+                    contact.name,
+                    contact.email or "",
+                    contact.role or "",
+                    contact.organization or "",
+                ),
+            )
 
     def _accept(self) -> None:
         selected = self.tree.selection()
@@ -311,15 +328,22 @@ class ProjectPickerDialog(tk.Toplevel):
         self.tree.grid(row=0, column=0, sticky="nsew")
         self.tree.bind("<Double-1>", lambda _event: self._accept())
         for index, project in enumerate(projects):
-            self.tree.insert("", "end", iid=str(index), values=(
-                project.get("code") or "",
-                project.get("description") or "",
-                project.get("client") or "",
-            ))
+            self.tree.insert(
+                "",
+                "end",
+                iid=str(index),
+                values=(
+                    project.get("code") or "",
+                    project.get("description") or "",
+                    project.get("client") or "",
+                ),
+            )
         buttons = ttk.Frame(frame)
         buttons.grid(row=1, column=0, sticky="e", pady=(10, 0))
         ttk.Button(buttons, text="Cancelar", command=self.destroy).pack(side="right")
-        ttk.Button(buttons, text="Seleccionar", command=self._accept).pack(side="right", padx=(0, 8))
+        ttk.Button(buttons, text="Seleccionar", command=self._accept).pack(
+            side="right", padx=(0, 8)
+        )
 
     def _accept(self) -> None:
         selected = self.tree.selection()
@@ -334,6 +358,7 @@ class MinutasApp(tk.Tk):
         super().__init__()
         ensure_user_directories()
         self.logger = get_logger()
+        self.processing_job_store = ProcessingJobStore(recover_on_open=True)
         self.config_data = self._load_config()
         self.appearance_manager = AppearanceManager(self)
         self.appearance_manager.apply(self.config_data)
@@ -383,13 +408,15 @@ class MinutasApp(tk.Tk):
 
     def _save_config(self) -> None:
         payload = dict(self.config_data)
-        payload.update({
-            "ollama_base_url": self.ollama_url_var.get().strip(),
-            "model": self.model_var.get().strip(),
-            "output_dir": self.output_dir_var.get().strip(),
-            "auto_add_transcript_speakers": self.auto_speakers_var.get(),
-            "open_word_after_generation": self.open_word_var.get(),
-        })
+        payload.update(
+            {
+                "ollama_base_url": self.ollama_url_var.get().strip(),
+                "model": self.model_var.get().strip(),
+                "output_dir": self.output_dir_var.get().strip(),
+                "auto_add_transcript_speakers": self.auto_speakers_var.get(),
+                "open_word_after_generation": self.open_word_var.get(),
+            }
+        )
         if bool(payload.get("remember_window_geometry", True)):
             payload["window_geometry"] = self.geometry()
         self.config_data = save_settings_dict(payload)
@@ -410,11 +437,19 @@ class MinutasApp(tk.Tk):
     def _create_variables(self) -> None:
         today = date.today().isoformat()
         self.vtt_var = tk.StringVar()
-        self.output_dir_var = tk.StringVar(value=str(self.config_data.get("output_dir", default_output_dir())))
-        self.ollama_url_var = tk.StringVar(value=str(self.config_data.get("ollama_base_url", "http://localhost:11434")))
+        self.output_dir_var = tk.StringVar(
+            value=str(self.config_data.get("output_dir", default_output_dir()))
+        )
+        self.ollama_url_var = tk.StringVar(
+            value=str(self.config_data.get("ollama_base_url", "http://localhost:11434"))
+        )
         self.model_var = tk.StringVar(value=str(self.config_data.get("model", "qwen3:8b")))
-        self.auto_speakers_var = tk.BooleanVar(value=bool(self.config_data.get("auto_add_transcript_speakers", True)))
-        self.open_word_var = tk.BooleanVar(value=bool(self.config_data.get("open_word_after_generation", True)))
+        self.auto_speakers_var = tk.BooleanVar(
+            value=bool(self.config_data.get("auto_add_transcript_speakers", True))
+        )
+        self.open_word_var = tk.BooleanVar(
+            value=bool(self.config_data.get("open_word_after_generation", True))
+        )
         self.ollama_status_var = tk.StringVar(value="Verificando componentes...")
         self.progress_text_var = tk.StringVar(value="Listo")
         self.processing_metrics_var = tk.StringVar(value="")
@@ -424,7 +459,9 @@ class MinutasApp(tk.Tk):
         self.processing_telemetry_state: dict = {}
         self.processing_tick_job: str | None = None
         self.provider_summary_var = tk.StringVar(
-            value=provider_display_name(str(self.config_data.get("processing_provider", "ollama_local")))
+            value=provider_display_name(
+                str(self.config_data.get("processing_provider", "ollama_local"))
+            )
         )
         self.review_summary_var = tk.StringVar(
             value="Procese una transcripción para revisar los puntos detectados."
@@ -448,23 +485,40 @@ class MinutasApp(tk.Tk):
     def _build_menu(self) -> None:
         menubar = tk.Menu(self)
         file_menu = tk.Menu(menubar, tearoff=False)
-        file_menu.add_command(label="Abrir transcripción...", accelerator="Ctrl+O", command=self.browse_vtt)
-        file_menu.add_command(label="Generar Word", accelerator="Ctrl+S", command=self.generate_document)
+        file_menu.add_command(
+            label="Abrir transcripción...", accelerator="Ctrl+O", command=self.browse_vtt
+        )
+        file_menu.add_command(
+            label="Generar Word", accelerator="Ctrl+S", command=self.generate_document
+        )
         file_menu.add_separator()
         file_menu.add_command(label="Salir", command=self._on_close)
         menubar.add_cascade(label="Archivo", menu=file_menu)
 
         tools_menu = tk.Menu(menubar, tearoff=False)
-        tools_menu.add_command(label="Procesar reunión", accelerator="F5", command=self.start_analysis)
-        tools_menu.add_command(label="Verificar método de procesamiento", command=self.refresh_ollama_status)
-        tools_menu.add_command(label="Reparar componentes locales", command=self.run_component_repair)
+        tools_menu.add_command(
+            label="Procesar reunión", accelerator="F5", command=self.start_analysis
+        )
+        tools_menu.add_command(
+            label="Verificar método de procesamiento", command=self.refresh_ollama_status
+        )
+        tools_menu.add_command(
+            label="Reparar componentes locales", command=self.run_component_repair
+        )
         tools_menu.add_separator()
-        tools_menu.add_command(label="Preferencias...", accelerator="Ctrl+,", command=self.open_preferences)
-        tools_menu.add_command(label="Buscar actualizaciones...", command=lambda: self.check_updates(manual=True))
+        tools_menu.add_command(
+            label="Preferencias...", accelerator="Ctrl+,", command=self.open_preferences
+        )
+        tools_menu.add_command(
+            label="Buscar actualizaciones...", command=lambda: self.check_updates(manual=True)
+        )
         menubar.add_cascade(label="Herramientas", menu=tools_menu)
 
         help_menu = tk.Menu(menubar, tearoff=False)
-        help_menu.add_command(label="Manual de usuario", command=lambda: self._open_path(install_root() / "docs" / "Manual_Usuario.html"))
+        help_menu.add_command(
+            label="Manual de usuario",
+            command=lambda: self._open_path(install_root() / "docs" / "Manual_Usuario.html"),
+        )
         help_menu.add_command(label="Generar diagnóstico", command=self.generate_diagnostic_report)
         help_menu.add_separator()
         help_menu.add_command(label="Acerca de Minutas ASH", command=self.show_about)
@@ -495,7 +549,9 @@ class MinutasApp(tk.Tk):
             textvariable=self.provider_summary_var,
             style="SurfaceMuted.TLabel",
         ).pack(anchor="w", pady=(2, 0))
-        self.ollama_label = ttk.Label(header, textvariable=self.ollama_status_var, style="StatusBad.TLabel")
+        self.ollama_label = ttk.Label(
+            header, textvariable=self.ollama_status_var, style="StatusBad.TLabel"
+        )
         self.ollama_label.pack(side="right", anchor="n", padx=8)
 
         main = ttk.Frame(self, padding=(14, 0, 14, 10))
@@ -528,15 +584,31 @@ class MinutasApp(tk.Tk):
         status_box = ttk.Frame(bottom)
         status_box.pack(side="left", fill="x", expand=True)
         ttk.Label(status_box, textvariable=self.progress_text_var).pack(anchor="w")
-        ttk.Label(status_box, textvariable=self.processing_metrics_var, style="Muted.TLabel").pack(anchor="w")
-        self.progressbar = ttk.Progressbar(bottom, variable=self.progress_var, maximum=100, length=240)
+        ttk.Label(status_box, textvariable=self.processing_metrics_var, style="Muted.TLabel").pack(
+            anchor="w"
+        )
+        self.progressbar = ttk.Progressbar(
+            bottom, variable=self.progress_var, maximum=100, length=240
+        )
         self.progressbar.pack(side="left", padx=12)
-        ttk.Button(bottom, text="Abrir carpeta de salida", command=self.open_output_folder).pack(side="right")
-        self.word_button = ttk.Button(bottom, text="Generar Word", style="Primary.TButton", command=self.generate_document, state="disabled")
+        ttk.Button(bottom, text="Abrir carpeta de salida", command=self.open_output_folder).pack(
+            side="right"
+        )
+        self.word_button = ttk.Button(
+            bottom,
+            text="Generar Word",
+            style="Primary.TButton",
+            command=self.generate_document,
+            state="disabled",
+        )
         self.word_button.pack(side="right", padx=8)
-        self.cancel_button = ttk.Button(bottom, text="Cancelar", command=self.cancel_analysis, state="disabled")
+        self.cancel_button = ttk.Button(
+            bottom, text="Cancelar", command=self.cancel_analysis, state="disabled"
+        )
         self.cancel_button.pack(side="right")
-        self.analyze_button = ttk.Button(bottom, text="Procesar reunión", style="Primary.TButton", command=self.start_analysis)
+        self.analyze_button = ttk.Button(
+            bottom, text="Procesar reunión", style="Primary.TButton", command=self.start_analysis
+        )
         self.analyze_button.pack(side="right", padx=(0, 8))
 
     def _build_meeting_tab(self) -> None:
@@ -547,8 +619,12 @@ class MinutasApp(tk.Tk):
         source.columnconfigure(1, weight=1)
         ttk.Label(source, text="Archivo VTT").grid(row=0, column=0, sticky="w", padx=(0, 8))
         ttk.Entry(source, textvariable=self.vtt_var).grid(row=0, column=1, sticky="ew")
-        ttk.Button(source, text="Examinar...", command=self.browse_vtt).grid(row=0, column=2, padx=(8, 0))
-        ttk.Button(source, text="Detectar hablantes", command=self.detect_speakers).grid(row=0, column=3, padx=(8, 0))
+        ttk.Button(source, text="Examinar...", command=self.browse_vtt).grid(
+            row=0, column=2, padx=(8, 0)
+        )
+        ttk.Button(source, text="Detectar hablantes", command=self.detect_speakers).grid(
+            row=0, column=3, padx=(8, 0)
+        )
 
         form = ttk.LabelFrame(tab, text="Datos de la minuta", padding=12)
         form.grid(row=1, column=0, columnspan=4, sticky="nsew")
@@ -570,15 +646,25 @@ class MinutasApp(tk.Tk):
         ]
         for label, key, row, col in fields:
             ttk.Label(form, text=label).grid(row=row, column=col, sticky="w", padx=(0, 8), pady=6)
-            ttk.Entry(form, textvariable=self.meta_vars[key]).grid(row=row, column=col + 1, sticky="ew", padx=(0, 18), pady=6)
+            ttk.Entry(form, textvariable=self.meta_vars[key]).grid(
+                row=row, column=col + 1, sticky="ew", padx=(0, 18), pady=6
+            )
 
         controls = ttk.Frame(tab)
         controls.grid(row=2, column=0, columnspan=4, sticky="ew", pady=(12, 0))
-        ttk.Button(controls, text="Cargar ficha JSON", command=self.load_metadata_file).pack(side="left")
-        ttk.Button(controls, text="Guardar ficha JSON", command=self.save_metadata_file).pack(side="left", padx=8)
+        ttk.Button(controls, text="Cargar ficha JSON", command=self.load_metadata_file).pack(
+            side="left"
+        )
+        ttk.Button(controls, text="Guardar ficha JSON", command=self.save_metadata_file).pack(
+            side="left", padx=8
+        )
         ttk.Button(controls, text="Limpiar formulario", command=self.clear_form).pack(side="left")
-        ttk.Button(controls, text="Guardar en catálogos", command=self.save_catalogs).pack(side="left", padx=8)
-        ttk.Button(controls, text="Cargar proyecto", command=self.load_project_catalog).pack(side="left")
+        ttk.Button(controls, text="Guardar en catálogos", command=self.save_catalogs).pack(
+            side="left", padx=8
+        )
+        ttk.Button(controls, text="Cargar proyecto", command=self.load_project_catalog).pack(
+            side="left"
+        )
         ttk.Label(
             controls,
             text=f"Fechas recomendadas: {DATE_HINT}",
@@ -589,15 +675,32 @@ class MinutasApp(tk.Tk):
         tab.rowconfigure(0, weight=1)
         tab.columnconfigure(0, weight=1)
         columns = ("id", "initials", "name", "email", "role", "organization")
-        self.attendee_tree = ttk.Treeview(tab, columns=columns, show="headings", selectmode="browse")
+        self.attendee_tree = ttk.Treeview(
+            tab, columns=columns, show="headings", selectmode="browse"
+        )
         headings = {
-            "id": "Id", "initials": "Iniciales", "name": "Nombre",
-            "email": "Correo", "role": "Cargo", "organization": "Organización",
+            "id": "Id",
+            "initials": "Iniciales",
+            "name": "Nombre",
+            "email": "Correo",
+            "role": "Cargo",
+            "organization": "Organización",
         }
-        widths = {"id": 45, "initials": 75, "name": 210, "email": 210, "role": 210, "organization": 110}
+        widths = {
+            "id": 45,
+            "initials": 75,
+            "name": 210,
+            "email": 210,
+            "role": 210,
+            "organization": 110,
+        }
         for col in columns:
             self.attendee_tree.heading(col, text=headings[col])
-            self.attendee_tree.column(col, width=widths[col], anchor="center" if col in {"id", "initials", "organization"} else "w")
+            self.attendee_tree.column(
+                col,
+                width=widths[col],
+                anchor="center" if col in {"id", "initials", "organization"} else "w",
+            )
         self.attendee_tree.grid(row=0, column=0, sticky="nsew")
         scroll = ttk.Scrollbar(tab, orient="vertical", command=self.attendee_tree.yview)
         scroll.grid(row=0, column=1, sticky="ns")
@@ -609,9 +712,15 @@ class MinutasApp(tk.Tk):
         ttk.Button(buttons, text="Agregar", command=self.add_attendee).pack(side="left")
         ttk.Button(buttons, text="Editar", command=self.edit_attendee).pack(side="left", padx=6)
         ttk.Button(buttons, text="Eliminar", command=self.delete_attendee).pack(side="left")
-        ttk.Button(buttons, text="Renumerar", command=self.renumber_attendees).pack(side="left", padx=6)
-        ttk.Button(buttons, text="Guardar contactos", command=self.save_contacts).pack(side="left", padx=6)
-        ttk.Button(buttons, text="Agregar desde catálogo", command=self.add_from_contacts).pack(side="left")
+        ttk.Button(buttons, text="Renumerar", command=self.renumber_attendees).pack(
+            side="left", padx=6
+        )
+        ttk.Button(buttons, text="Guardar contactos", command=self.save_contacts).pack(
+            side="left", padx=6
+        )
+        ttk.Button(buttons, text="Agregar desde catálogo", command=self.add_from_contacts).pack(
+            side="left"
+        )
 
     def _build_review_tab(self) -> None:
         tab = self.tab_review
@@ -629,14 +738,26 @@ class MinutasApp(tk.Tk):
         columns = ("n", "category", "description", "responsible", "date", "evidence")
         self.item_tree = ttk.Treeview(tab, columns=columns, show="headings", selectmode="browse")
         headings = {
-            "n": "N.º", "category": "Categoría", "description": "Descripción",
-            "responsible": "Responsable", "date": "Fecha/plazo",
+            "n": "N.º",
+            "category": "Categoría",
+            "description": "Descripción",
+            "responsible": "Responsable",
+            "date": "Fecha/plazo",
             "evidence": "Referencia",
         }
-        widths = {"n": 45, "category": 100, "description": 500, "responsible": 175, "date": 130, "evidence": 100}
+        widths = {
+            "n": 45,
+            "category": 100,
+            "description": 500,
+            "responsible": 175,
+            "date": 130,
+            "evidence": 100,
+        }
         for col in columns:
             self.item_tree.heading(col, text=headings[col])
-            self.item_tree.column(col, width=widths[col], anchor="center" if col != "description" else "w")
+            self.item_tree.column(
+                col, width=widths[col], anchor="center" if col != "description" else "w"
+            )
         self.item_tree.grid(row=1, column=0, sticky="nsew")
         scroll = ttk.Scrollbar(tab, orient="vertical", command=self.item_tree.yview)
         scroll.grid(row=1, column=1, sticky="ns")
@@ -647,9 +768,15 @@ class MinutasApp(tk.Tk):
         buttons.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(10, 0))
         ttk.Button(buttons, text="Agregar", command=self.add_item).pack(side="left")
         ttk.Button(buttons, text="Editar", command=self.edit_item).pack(side="left", padx=6)
-        ttk.Button(buttons, text="Ver referencia", command=self.show_item_reference).pack(side="left")
-        ttk.Button(buttons, text="Eliminar", command=self.delete_item).pack(side="left", padx=(6, 0))
-        ttk.Button(buttons, text="Subir", command=lambda: self.move_item(-1)).pack(side="left", padx=(14, 6))
+        ttk.Button(buttons, text="Ver referencia", command=self.show_item_reference).pack(
+            side="left"
+        )
+        ttk.Button(buttons, text="Eliminar", command=self.delete_item).pack(
+            side="left", padx=(6, 0)
+        )
+        ttk.Button(buttons, text="Subir", command=lambda: self.move_item(-1)).pack(
+            side="left", padx=(14, 6)
+        )
         ttk.Button(buttons, text="Bajar", command=lambda: self.move_item(1)).pack(side="left")
         ttk.Label(
             buttons,
@@ -683,9 +810,13 @@ class MinutasApp(tk.Tk):
         buttons = ttk.Frame(tab)
         buttons.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(10, 0))
         ttk.Button(buttons, text="Actualizar", command=self._refresh_history_tree).pack(side="left")
-        ttk.Button(buttons, text="Cargar en editor", command=self.load_history_meeting).pack(side="left", padx=6)
+        ttk.Button(buttons, text="Cargar en editor", command=self.load_history_meeting).pack(
+            side="left", padx=6
+        )
         ttk.Button(buttons, text="Abrir Word", command=self.open_history_document).pack(side="left")
-        ttk.Button(buttons, text="Abrir carpeta", command=self.open_history_folder).pack(side="left", padx=6)
+        ttk.Button(buttons, text="Abrir carpeta", command=self.open_history_folder).pack(
+            side="left", padx=6
+        )
         ttk.Label(
             buttons,
             text="El historial se guarda localmente en SQLite.",
@@ -715,28 +846,59 @@ class MinutasApp(tk.Tk):
         ).grid(row=1, column=0, sticky="w", pady=(5, 0))
         system_buttons = ttk.Frame(system_box)
         system_buttons.grid(row=2, column=0, sticky="w", pady=(12, 0))
-        ttk.Button(system_buttons, text="Verificar", command=self.refresh_ollama_status).pack(side="left")
-        ttk.Button(system_buttons, text="Reparar componentes locales", command=self.run_component_repair).pack(side="left", padx=6)
-        ttk.Button(system_buttons, text="Preferencias...", style="Primary.TButton", command=self.open_preferences).pack(side="left")
+        ttk.Button(system_buttons, text="Verificar", command=self.refresh_ollama_status).pack(
+            side="left"
+        )
+        ttk.Button(
+            system_buttons, text="Reparar componentes locales", command=self.run_component_repair
+        ).pack(side="left", padx=6)
+        ttk.Button(
+            system_buttons,
+            text="Preferencias...",
+            style="Primary.TButton",
+            command=self.open_preferences,
+        ).pack(side="left")
 
         documents = ttk.LabelFrame(tab, text="Documentos", padding=14)
         documents.grid(row=1, column=0, sticky="ew", pady=(0, 14))
         documents.columnconfigure(1, weight=1)
-        ttk.Label(documents, text="Carpeta de documentos").grid(row=0, column=0, sticky="w", padx=(0, 12), pady=7)
-        ttk.Entry(documents, textvariable=self.output_dir_var).grid(row=0, column=1, sticky="ew", pady=7)
-        ttk.Button(documents, text="Examinar...", command=self.browse_output).grid(row=0, column=2, padx=(8, 0))
-        ttk.Checkbutton(documents, text="Agregar automáticamente participantes detectados", variable=self.auto_speakers_var).grid(row=1, column=1, sticky="w", pady=7)
-        ttk.Checkbutton(documents, text="Abrir el documento después de generarlo", variable=self.open_word_var).grid(row=2, column=1, sticky="w", pady=7)
+        ttk.Label(documents, text="Carpeta de documentos").grid(
+            row=0, column=0, sticky="w", padx=(0, 12), pady=7
+        )
+        ttk.Entry(documents, textvariable=self.output_dir_var).grid(
+            row=0, column=1, sticky="ew", pady=7
+        )
+        ttk.Button(documents, text="Examinar...", command=self.browse_output).grid(
+            row=0, column=2, padx=(8, 0)
+        )
+        ttk.Checkbutton(
+            documents,
+            text="Agregar automáticamente participantes detectados",
+            variable=self.auto_speakers_var,
+        ).grid(row=1, column=1, sticky="w", pady=7)
+        ttk.Checkbutton(
+            documents, text="Abrir el documento después de generarlo", variable=self.open_word_var
+        ).grid(row=2, column=1, sticky="w", pady=7)
 
         maintenance = ttk.LabelFrame(tab, text="Mantenimiento", padding=14)
         maintenance.grid(row=2, column=0, sticky="ew")
         buttons = ttk.Frame(maintenance)
         buttons.pack(anchor="w")
-        ttk.Button(buttons, text="Guardar configuración", command=self.save_settings).pack(side="left")
-        ttk.Button(buttons, text="Buscar actualizaciones", command=lambda: self.check_updates(manual=True)).pack(side="left", padx=6)
-        ttk.Button(buttons, text="Abrir datos locales", command=lambda: self._open_path(user_data_root())).pack(side="left")
-        ttk.Button(buttons, text="Abrir registros", command=lambda: self._open_path(logs_dir())).pack(side="left", padx=6)
-        ttk.Button(buttons, text="Generar diagnóstico", command=self.generate_diagnostic_report).pack(side="left")
+        ttk.Button(buttons, text="Guardar configuración", command=self.save_settings).pack(
+            side="left"
+        )
+        ttk.Button(
+            buttons, text="Buscar actualizaciones", command=lambda: self.check_updates(manual=True)
+        ).pack(side="left", padx=6)
+        ttk.Button(
+            buttons, text="Abrir datos locales", command=lambda: self._open_path(user_data_root())
+        ).pack(side="left")
+        ttk.Button(
+            buttons, text="Abrir registros", command=lambda: self._open_path(logs_dir())
+        ).pack(side="left", padx=6)
+        ttk.Button(
+            buttons, text="Generar diagnóstico", command=self.generate_diagnostic_report
+        ).pack(side="left")
         ttk.Label(
             maintenance,
             text=(
@@ -755,13 +917,17 @@ class MinutasApp(tk.Tk):
         self.log_text = ScrolledText(tab, wrap="word", state="disabled")
         self.log_text.grid(row=0, column=0, sticky="nsew")
         self.appearance_manager.configure_text_widget(self.log_text, fixed=True)
-        ttk.Button(tab, text="Limpiar registro", command=self.clear_log).grid(row=1, column=0, sticky="e", pady=(8, 0))
+        ttk.Button(tab, text="Limpiar registro", command=self.clear_log).grid(
+            row=1, column=0, sticky="e", pady=(8, 0)
+        )
 
     def _load_default_metadata(self) -> None:
         default = source_root() / "entrada" / "datos_reunion.json"
         if default.exists():
             with contextlib.suppress(Exception):
-                self._apply_metadata(MeetingMetadata.model_validate_json(default.read_text(encoding="utf-8-sig")))
+                self._apply_metadata(
+                    MeetingMetadata.model_validate_json(default.read_text(encoding="utf-8-sig"))
+                )
 
     def _metadata_from_form(self) -> MeetingMetadata:
         payload: dict[str, Any] = {
@@ -840,7 +1006,9 @@ class MinutasApp(tk.Tk):
         if not path:
             return
         try:
-            metadata = MeetingMetadata.model_validate_json(Path(path).read_text(encoding="utf-8-sig"))
+            metadata = MeetingMetadata.model_validate_json(
+                Path(path).read_text(encoding="utf-8-sig")
+            )
             self._apply_metadata(metadata)
             self._log(f"Ficha cargada: {path}")
         except (OSError, ValidationError, json.JSONDecodeError) as exc:
@@ -865,7 +1033,9 @@ class MinutasApp(tk.Tk):
         self._log(f"Ficha guardada: {path}")
 
     def clear_form(self) -> None:
-        if not messagebox.askyesno("Limpiar", "¿Desea limpiar los datos de la reunión?", parent=self):
+        if not messagebox.askyesno(
+            "Limpiar", "¿Desea limpiar los datos de la reunión?", parent=self
+        ):
             return
         today = date.today().isoformat()
         for variable in self.meta_vars.values():
@@ -879,7 +1049,9 @@ class MinutasApp(tk.Tk):
         self.items.clear()
         self.analysis_bundle = None
         self.current_meeting_id = None
-        self.review_summary_var.set("Formulario limpio. Seleccione una transcripción para comenzar.")
+        self.review_summary_var.set(
+            "Formulario limpio. Seleccione una transcripción para comenzar."
+        )
         self._refresh_attendees_tree()
         self._refresh_items_tree()
         self.word_button.configure(state="disabled")
@@ -887,7 +1059,9 @@ class MinutasApp(tk.Tk):
     def detect_speakers(self, switch_tab: bool = True) -> None:
         path = Path(self.vtt_var.get().strip())
         if not path.exists():
-            messagebox.showwarning("Transcripción", "Seleccione primero un archivo VTT válido.", parent=self)
+            messagebox.showwarning(
+                "Transcripción", "Seleccione primero un archivo VTT válido.", parent=self
+            )
             return
         try:
             speakers = unique_speakers(read_teams_vtt(path))
@@ -937,7 +1111,9 @@ class MinutasApp(tk.Tk):
         index = self._selected_attendee_index()
         if index is None:
             return
-        if messagebox.askyesno("Eliminar", f"¿Eliminar a {self.attendees[index].name}?", parent=self):
+        if messagebox.askyesno(
+            "Eliminar", f"¿Eliminar a {self.attendees[index].name}?", parent=self
+        ):
             self.attendees.pop(index)
             self.renumber_attendees()
 
@@ -950,14 +1126,19 @@ class MinutasApp(tk.Tk):
     def _refresh_attendees_tree(self) -> None:
         self.attendee_tree.delete(*self.attendee_tree.get_children())
         for index, attendee in enumerate(self.attendees):
-            self.attendee_tree.insert("", "end", iid=str(index), values=(
-                attendee.id or index + 1,
-                attendee.initials or "",
-                attendee.name,
-                attendee.email or "",
-                attendee.role or "",
-                attendee.organization or "Por confirmar",
-            ))
+            self.attendee_tree.insert(
+                "",
+                "end",
+                iid=str(index),
+                values=(
+                    attendee.id or index + 1,
+                    attendee.initials or "",
+                    attendee.name,
+                    attendee.email or "",
+                    attendee.role or "",
+                    attendee.organization or "Por confirmar",
+                ),
+            )
 
     @staticmethod
     def _seconds_from_timestamp(value: str | None) -> float | None:
@@ -1043,7 +1224,10 @@ class MinutasApp(tk.Tk):
                 "selected" if position == nearest else "normal",
             )
         with contextlib.suppress(tk.TclError):
-            text.tag_configure("selected", font=(self.config_data.get("appearance_font_family", "Segoe UI"), 10, "bold"))
+            text.tag_configure(
+                "selected",
+                font=(self.config_data.get("appearance_font_family", "Segoe UI"), 10, "bold"),
+            )
         text.configure(state="disabled")
         ttk.Button(frame, text="Cerrar", command=window.destroy).pack(anchor="e", pady=(10, 0))
 
@@ -1081,6 +1265,7 @@ class MinutasApp(tk.Tk):
             self.items.pop(index)
             self._sync_items_to_bundle()
             self._refresh_items_tree()
+            self._save_autosave_draft()
 
     def move_item(self, delta: int) -> None:
         index = self._selected_item_index()
@@ -1092,33 +1277,43 @@ class MinutasApp(tk.Tk):
         self.items[index], self.items[target] = self.items[target], self.items[index]
         self._sync_items_to_bundle()
         self._refresh_items_tree(select_index=target)
+        self._save_autosave_draft()
 
     def _refresh_items_tree(self, select_index: int | None = None) -> None:
         self.item_tree.delete(*self.item_tree.get_children())
         for index, item in enumerate(self.items):
             due = item.due_date_text or item.due_date_iso or ""
-            self.item_tree.insert("", "end", iid=str(index), values=(
-                index + 1,
-                item.category,
-                item.description,
-                item.responsible or "",
-                due,
-                item.evidence or "",
-            ))
+            self.item_tree.insert(
+                "",
+                "end",
+                iid=str(index),
+                values=(
+                    index + 1,
+                    item.category,
+                    item.description,
+                    item.responsible or "",
+                    due,
+                    item.evidence or "",
+                ),
+            )
         if select_index is not None and 0 <= select_index < len(self.items):
             self.item_tree.selection_set(str(select_index))
             self.item_tree.focus(str(select_index))
 
     def _sync_items_to_bundle(self) -> None:
         if self.analysis_bundle:
-            self.analysis_bundle.analysis.items = [item.model_copy(deep=True) for item in self.items]
+            self.analysis_bundle.analysis.items = [
+                item.model_copy(deep=True) for item in self.items
+            ]
 
     def start_analysis(self) -> None:
         if self.busy:
             return
         vtt_path = Path(self.vtt_var.get().strip())
         if not vtt_path.exists():
-            messagebox.showwarning("Transcripción", "Seleccione un archivo VTT válido.", parent=self)
+            messagebox.showwarning(
+                "Transcripción", "Seleccione un archivo VTT válido.", parent=self
+            )
             return
         try:
             metadata = self._metadata_from_form()
@@ -1128,7 +1323,11 @@ class MinutasApp(tk.Tk):
         provider_id = str(self.config_data.get("processing_provider", "ollama_local"))
         model = configured_model(self.config_data, provider_id)
         if not model:
-            messagebox.showwarning("Perfil de procesamiento", "Configure un modelo o perfil de procesamiento.", parent=self)
+            messagebox.showwarning(
+                "Perfil de procesamiento",
+                "Configure un modelo o perfil de procesamiento.",
+                parent=self,
+            )
             return
         descriptor = descriptor_for(provider_id)
         if descriptor.is_remote and bool(self.config_data.get("confirm_remote_processing", True)):  # noqa: SIM102
@@ -1145,11 +1344,14 @@ class MinutasApp(tk.Tk):
                 return
 
         config = deepcopy(self.config_data)
-        config.update({
-            "ollama_base_url": self.ollama_url_var.get().strip(),
-            "model": self.model_var.get().strip() or str(self.config_data.get("model", "qwen3:8b")),
-            "auto_add_transcript_speakers": self.auto_speakers_var.get(),
-        })
+        config.update(
+            {
+                "ollama_base_url": self.ollama_url_var.get().strip(),
+                "model": self.model_var.get().strip()
+                or str(self.config_data.get("model", "qwen3:8b")),
+                "auto_add_transcript_speakers": self.auto_speakers_var.get(),
+            }
+        )
         self.cancel_requested = False
         self._set_busy(True)
         self.progress_var.set(0)
@@ -1163,27 +1365,62 @@ class MinutasApp(tk.Tk):
         self._log("=" * 60)
         self._log("INICIO DEL PROCESAMIENTO")
 
+        job_store = ProcessingJobStore()
+        job = job_store.create(str(vtt_path), provider_id, model)
+        job_store.update(job.job_id, status="running", message="Iniciando procesamiento")
+        self.active_processing_job_id = job.job_id
+
         thread = threading.Thread(
             target=self._analysis_worker,
-            args=(vtt_path, metadata, config, model),
+            args=(vtt_path, metadata, config, model, job.job_id),
             daemon=True,
         )
         thread.start()
 
-    def _analysis_worker(self, vtt_path: Path, metadata: MeetingMetadata, config: dict, model: str) -> None:
+    def _analysis_worker(
+        self,
+        vtt_path: Path,
+        metadata: MeetingMetadata,
+        config: dict,
+        model: str,
+        job_id: str,
+    ) -> None:
+        job_store = ProcessingJobStore()
+
+        def report_progress(value: int, message: str) -> None:
+            with contextlib.suppress(Exception):
+                job_store.update(job_id, status="running", progress=value, message=message)
+            self.worker_queue.put(("progress", (value, message)))
+
         try:
-            bundle = analyze_meeting(
-                vtt_path,
-                metadata,
-                config,
-                model,
-                log=lambda message: self.worker_queue.put(("log", message)),
-                progress=lambda value, message: self.worker_queue.put(("progress", (value, message))),
-                telemetry=lambda event: self.worker_queue.put(("telemetry", event)),
-                cancelled=lambda: self.cancel_requested,
-            )
+            with operation(job_id):
+                bundle = analyze_meeting(
+                    vtt_path,
+                    metadata,
+                    config,
+                    model,
+                    log=lambda message: self.worker_queue.put(("log", message)),
+                    progress=report_progress,
+                    telemetry=lambda event: self.worker_queue.put(("telemetry", event)),
+                    cancelled=lambda: self.cancel_requested,
+                )
+            with contextlib.suppress(Exception):
+                job_store.update(
+                    job_id,
+                    status="completed",
+                    progress=100,
+                    message="Contenido listo para revision",
+                )
             self.worker_queue.put(("analysis_success", bundle))
         except Exception as exc:
+            status: JobStatus = "cancelled" if isinstance(exc, InterruptedError) else "failed"
+            with contextlib.suppress(Exception):
+                job_store.update(
+                    job_id,
+                    status=status,
+                    message=str(exc),
+                    error=str(exc) if status == "failed" else "",
+                )
             self.worker_queue.put(("error", exc))
 
     def _poll_worker_queue(self) -> None:
@@ -1201,7 +1438,9 @@ class MinutasApp(tk.Tk):
                 elif kind == "analysis_success":
                     self._analysis_complete(cast(AnalysisBundle, payload))
                 elif kind == "provider_status" or kind == "ollama_status":
-                    self._apply_provider_status(cast(tuple[bool, str, list[str], Exception | None], payload))
+                    self._apply_provider_status(
+                        cast(tuple[bool, str, list[str], Exception | None], payload)
+                    )
                 elif kind == "refresh_ollama":
                     self.refresh_ollama_status()
                 elif kind == "update_result":
@@ -1221,7 +1460,9 @@ class MinutasApp(tk.Tk):
                     self._set_busy(False)
                     self._log("Componentes preparados correctamente.")
                     self.refresh_ollama_status()
-                    messagebox.showinfo("Componentes", "Los componentes quedaron disponibles.", parent=self)
+                    messagebox.showinfo(
+                        "Componentes", "Los componentes quedaron disponibles.", parent=self
+                    )
                 elif kind == "media_transcribed":
                     self._set_busy(False)
                     self._accept_vtt_path(cast(Path, payload))
@@ -1250,7 +1491,7 @@ class MinutasApp(tk.Tk):
             return ""
         if number <= 0:
             return ""
-        return f"{number / (1024 ** 3):.1f} GB libres"
+        return f"{number / (1024**3):.1f} GB libres"
 
     def _schedule_processing_tick(self) -> None:
         if self.processing_tick_job is None:
@@ -1319,9 +1560,7 @@ class MinutasApp(tk.Tk):
                 f"{payload.get('child_count', '?')} partes."
             )
         elif event_type == "chunk_retry":
-            self._log(
-                f"Reintento adaptativo del bloque · intento {payload.get('attempt', '?')}."
-            )
+            self._log(f"Reintento adaptativo del bloque · intento {payload.get('attempt', '?')}.")
         elif event_type == "request_timeout":
             self.progress_text_var.set("Ajustando bloque después de una espera prolongada")
         elif event_type == "request_cancelled":
@@ -1374,13 +1613,15 @@ class MinutasApp(tk.Tk):
                 model=bundle.model,
                 status="procesada",
                 meeting_id=self.current_meeting_id,
-                app_version=str(self.config_data.get("app_version", "2.3.3")),
+                app_version=str(self.config_data.get("app_version", "2.3.4")),
                 document_provider=str(self.config_data.get("document_provider", "ash_minutes_v1")),
                 processing_provider=bundle.provider_id,
                 processing_provider_name=bundle.provider_name,
                 source_type=bundle.metadata.source_type,
                 source_quality=bundle.metadata.source_quality,
-                is_test=bool(getattr(self, "record_is_test_var", None) and self.record_is_test_var.get()),
+                is_test=bool(
+                    getattr(self, "record_is_test_var", None) and self.record_is_test_var.get()
+                ),
             )
             self._refresh_history_tree()
         except Exception as exc:
@@ -1418,7 +1659,9 @@ class MinutasApp(tk.Tk):
         self.progress_text_var.set("Error")
         if isinstance(exc, InterruptedError):
             self.progress_text_var.set("Proceso cancelado")
-            self.processing_metrics_var.set("El avance completado quedó guardado para continuar después.")
+            self.processing_metrics_var.set(
+                "El avance completado quedó guardado para continuar después."
+            )
             self._log(str(exc))
             messagebox.showinfo("Proceso cancelado", str(exc), parent=self)
             return
@@ -1442,7 +1685,9 @@ class MinutasApp(tk.Tk):
 
     def generate_document(self) -> None:
         if not self.analysis_bundle:
-            messagebox.showwarning("Revisión", "Primero procese una fuente de reunión.", parent=self)
+            messagebox.showwarning(
+                "Revisión", "Primero procese una fuente de reunión.", parent=self
+            )
             return
         try:
             metadata = self._metadata_from_form()
@@ -1506,14 +1751,21 @@ class MinutasApp(tk.Tk):
                 status="generada",
                 docx_path=str(docx_path),
                 json_path=str(json_path),
+                pdf_path=(
+                    str(docx_path.with_suffix(".pdf"))
+                    if docx_path.with_suffix(".pdf").is_file()
+                    else None
+                ),
                 meeting_id=self.current_meeting_id,
-                app_version=str(self.config_data.get("app_version", "2.3.3")),
+                app_version=str(self.config_data.get("app_version", "2.3.4")),
                 document_provider=str(self.config_data.get("document_provider", "ash_minutes_v1")),
                 processing_provider=self.analysis_bundle.provider_id,
                 processing_provider_name=self.analysis_bundle.provider_name,
                 source_type=metadata.source_type,
                 source_quality=metadata.source_quality,
-                is_test=bool(getattr(self, "record_is_test_var", None) and self.record_is_test_var.get()),
+                is_test=bool(
+                    getattr(self, "record_is_test_var", None) and self.record_is_test_var.get()
+                ),
             )
             self._refresh_history_tree()
             self.progress_var.set(100)
@@ -1523,11 +1775,15 @@ class MinutasApp(tk.Tk):
             self._log(f"Transcripción: {transcript_path}")
             self._log(f"Carpeta de reunión: {meeting_folder.root}")
             self._save_config()
-            messagebox.showinfo(
-                "Minuta generada",
-                f"Documento creado correctamente:\n\n{docx_path}\n\nRevíselo antes de distribuirlo.",
-                parent=self,
-            )
+            pdf_path = docx_path.with_suffix(".pdf")
+            if pdf_path.is_file():
+                self._log(f"PDF: {pdf_path}")
+            if not bool(getattr(self, "_automated_emission_pending", False)):
+                messagebox.showinfo(
+                    "Minuta generada",
+                    f"Documento creado correctamente:\n\n{docx_path}\n\nRevíselo antes de distribuirlo.",
+                    parent=self,
+                )
             if self.open_word_var.get():
                 self._open_path(docx_path)
         except Exception as exc:
@@ -1545,7 +1801,9 @@ class MinutasApp(tk.Tk):
             self._apply_appearance(self.config_data)
             return
         self.output_dir_var.set(str(self.config_data.get("output_dir", default_output_dir())))
-        self.ollama_url_var.set(str(self.config_data.get("ollama_base_url", "http://127.0.0.1:11434")))
+        self.ollama_url_var.set(
+            str(self.config_data.get("ollama_base_url", "http://127.0.0.1:11434"))
+        )
         self.model_var.set(str(self.config_data.get("model", "qwen3:8b")))
         self.auto_speakers_var.set(bool(self.config_data.get("auto_add_transcript_speakers", True)))
         self.open_word_var.set(bool(self.config_data.get("open_word_after_generation", True)))
@@ -1594,9 +1852,7 @@ class MinutasApp(tk.Tk):
                 self._log(f"Método de procesamiento: {error}")
 
     # Alias usado por eventos de versiones anteriores.
-    def _apply_ollama_status(
-        self, payload: tuple[bool, str, list[str], Exception | None]
-    ) -> None:
+    def _apply_ollama_status(self, payload: tuple[bool, str, list[str], Exception | None]) -> None:
         self._apply_provider_status(payload)
 
     def _check_updates_on_start(self) -> None:
@@ -1606,7 +1862,9 @@ class MinutasApp(tk.Tk):
     def check_updates(self, manual: bool = True) -> None:
         if self.busy:
             if manual:
-                messagebox.showinfo("Actualizaciones", "Espere a que termine el proceso actual.", parent=self)
+                messagebox.showinfo(
+                    "Actualizaciones", "Espere a que termine el proceso actual.", parent=self
+                )
             return
         if manual:
             self.progress_text_var.set("Buscando actualizaciones...")
@@ -1631,7 +1889,7 @@ class MinutasApp(tk.Tk):
             self.config_data = save_settings_dict(self.config_data)
         except Exception as exc:
             self._log(f"No se pudo guardar la fecha de actualización: {exc}")
-        current = str(self.config_data.get("app_version", "2.3.3"))
+        current = str(self.config_data.get("app_version", "2.3.4"))
         if not is_newer_version(info.version, current):
             self.progress_text_var.set("Aplicación actualizada")
             if manual:
@@ -1673,7 +1931,9 @@ class MinutasApp(tk.Tk):
             try:
                 path = download_update(
                     info,
-                    progress=lambda value, message: self.worker_queue.put(("update_progress", (value, message))),
+                    progress=lambda value, message: self.worker_queue.put(
+                        ("update_progress", (value, message))
+                    ),
                 )
                 self.worker_queue.put(("update_downloaded", (info, path)))
             except Exception as exc:
@@ -1711,7 +1971,7 @@ class MinutasApp(tk.Tk):
         messagebox.showinfo(
             "Acerca de Minutas ASH",
             (
-                "Minutas ASH 2.3.3\n\n"
+                "Minutas ASH 2.3.4\n\n"
                 "Gestión, revisión y emisión de minutas corporativas.\n"
                 f"Método configurado: {provider_display_name(provider_id)}\n\n"
                 "ASH Ingeniería y Proyectos"
@@ -1827,15 +2087,20 @@ class MinutasApp(tk.Tk):
             return
         self.history_tree.delete(*self.history_tree.get_children())
         for row in self.db.list_meetings():
-            self.history_tree.insert("", "end", iid=str(row["id"]), values=(
-                row["id"],
-                row.get("meeting_date") or "",
-                row.get("minute_number") or "",
-                row.get("project_code") or "",
-                row.get("matter") or "",
-                row.get("status") or "",
-                row.get("updated_at") or "",
-            ))
+            self.history_tree.insert(
+                "",
+                "end",
+                iid=str(row["id"]),
+                values=(
+                    row["id"],
+                    row.get("meeting_date") or "",
+                    row.get("minute_number") or "",
+                    row.get("project_code") or "",
+                    row.get("matter") or "",
+                    row.get("status") or "",
+                    row.get("updated_at") or "",
+                ),
+            )
 
     def load_history_meeting(self) -> None:
         meeting_id = self._selected_history_id()
@@ -1862,7 +2127,8 @@ class MinutasApp(tk.Tk):
                     source_path=source_path,
                     model=row.get("model") or self.model_var.get(),
                     provider_id=row.get("processing_provider") or "ollama_local",
-                    provider_name=row.get("processing_provider_name") or provider_display_name(row.get("processing_provider") or "ollama_local"),
+                    provider_name=row.get("processing_provider_name")
+                    or provider_display_name(row.get("processing_provider") or "ollama_local"),
                 )
                 self.items = [item.model_copy(deep=True) for item in analysis.items]
                 self._refresh_items_tree()
@@ -1881,7 +2147,22 @@ class MinutasApp(tk.Tk):
         if path.is_file():
             self._open_path(path)
         else:
-            messagebox.showinfo("Historial", "La reunión aún no tiene un Word disponible.", parent=self)
+            messagebox.showinfo(
+                "Historial", "La reunión aún no tiene un Word disponible.", parent=self
+            )
+
+    def open_history_pdf(self) -> None:
+        meeting_id = self._selected_history_id()
+        if meeting_id is None:
+            return
+        row = self.db.get_meeting(meeting_id)
+        path = Path(row.get("pdf_path") or "") if row else Path()
+        if path.is_file():
+            self._open_path(path)
+        else:
+            messagebox.showinfo(
+                "Historial", "La reunión aún no tiene un PDF disponible.", parent=self
+            )
 
     def open_history_folder(self) -> None:
         meeting_id = self._selected_history_id()
@@ -1892,11 +2173,22 @@ class MinutasApp(tk.Tk):
         if path.is_dir():
             self._open_path(path)
         else:
-            messagebox.showinfo("Historial", "No se encontró la carpeta de la reunión.", parent=self)
+            messagebox.showinfo(
+                "Historial", "No se encontró la carpeta de la reunión.", parent=self
+            )
 
     def cancel_analysis(self) -> None:
         if self.busy:
             self.cancel_requested = True
+            job_id = getattr(self, "active_processing_job_id", "")
+            if job_id:
+                with contextlib.suppress(Exception):
+                    self.processing_job_store.update(
+                        job_id,
+                        status="running",
+                        progress=int(self.progress_var.get()),
+                        message="Cancelacion solicitada; guardando avance",
+                    )
             self.cancel_button.configure(state="disabled")
             self.progress_text_var.set("Cancelando solicitud actual y guardando avance...")
             self._log("Se solicitó cancelar la solicitud actual y conservar el avance.")
@@ -1904,11 +2196,11 @@ class MinutasApp(tk.Tk):
     def generate_diagnostic_report(self) -> None:
         try:
             self._save_config()
-            path = save_diagnostic_report(self.config_data)
+            path = save_diagnostic_bundle(self.config_data)
             self._log(f"Informe de diagnóstico generado: {path}")
             if messagebox.askyesno(
                 "Diagnóstico generado",
-                "El informe se generó correctamente. ¿Desea abrirlo?",
+                "El paquete ZIP sanitizado se generó correctamente. ¿Desea abrirlo?",
                 parent=self,
             ):
                 self._open_path(path)
@@ -1928,7 +2220,9 @@ class MinutasApp(tk.Tk):
             if ok:
                 self.worker_queue.put(("log", "Servicio local disponible."))
             else:
-                self.worker_queue.put(("log", "No fue posible iniciar el servicio local automáticamente."))
+                self.worker_queue.put(
+                    ("log", "No fue posible iniciar el servicio local automáticamente.")
+                )
             self.worker_queue.put(("refresh_ollama", None))
 
         threading.Thread(target=worker, daemon=True).start()
@@ -1955,6 +2249,7 @@ class MinutasApp(tk.Tk):
 
         def worker() -> None:
             try:
+
                 def runtime_progress(value: int, text: str) -> None:
                     mapped = int(value * 0.30)
                     self.worker_queue.put(("progress", (mapped, text)))
@@ -1974,10 +2269,12 @@ class MinutasApp(tk.Tk):
 
                 def progress(value: int, _text: str) -> None:
                     mapped = 30 + int(value * 0.70)
-                    self.worker_queue.put((
-                        "progress",
-                        (mapped, f"Actualizando componentes... {value}%"),
-                    ))
+                    self.worker_queue.put(
+                        (
+                            "progress",
+                            (mapped, f"Actualizando componentes... {value}%"),
+                        )
+                    )
 
                 pull_model_stream(
                     url,
@@ -1998,7 +2295,7 @@ class MinutasApp(tk.Tk):
     def _draft_file(self) -> Path:
         return drafts_dir() / "ultima_sesion.json"
 
-    def _save_autosave_draft(self) -> None:
+    def _save_autosave_draft(self) -> bool:
         try:
             metadata = self._metadata_from_form()
             payload = {
@@ -2010,8 +2307,9 @@ class MinutasApp(tk.Tk):
             path = self._draft_file()
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+            return True
         except Exception:
-            pass
+            return False
 
     def _load_autosave_draft(self) -> None:
         path = self._draft_file()
@@ -2020,7 +2318,9 @@ class MinutasApp(tk.Tk):
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
             metadata = MeetingMetadata.model_validate(payload.get("metadata", {}))
-            has_content = bool(metadata.minute_number or metadata.project_code or payload.get("vtt_path"))
+            has_content = bool(
+                metadata.minute_number or metadata.project_code or payload.get("vtt_path")
+            )
             if not has_content:
                 return
             if not messagebox.askyesno(

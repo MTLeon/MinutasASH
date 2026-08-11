@@ -49,14 +49,17 @@ class ExperienceTests(unittest.TestCase):
     def test_display_columns_depend_on_mode(self):
         self.assertEqual(attendee_display_columns("essential"), ("name", "organization", "status"))
         self.assertIn("email", attendee_display_columns("advanced"))
-        self.assertEqual(review_display_columns("essential"), ("status", "project", "description", "responsible", "date"))
+        self.assertEqual(
+            review_display_columns("essential"),
+            ("status", "project", "description", "responsible", "date"),
+        )
         self.assertIn("quality", review_display_columns("advanced"))
 
     def test_drop_parser_supports_windows_paths_with_spaces(self):
-        data = r"{C:\Users\mleon\Downloads\Reunión prueba.vtt} C:\temp\otra.vtt"
+        data = r"{C:\Users\demo\Downloads\Reunión prueba.vtt} C:\temp\otra.vtt"
         self.assertEqual(
             parse_drop_paths(data),
-            [r"C:\Users\mleon\Downloads\Reunión prueba.vtt", r"C:\temp\otra.vtt"],
+            [r"C:\Users\demo\Downloads\Reunión prueba.vtt", r"C:\temp\otra.vtt"],
         )
 
 

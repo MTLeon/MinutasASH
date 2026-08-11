@@ -32,7 +32,9 @@ def create_backup(
 ) -> Path:
     backups_dir().mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    target = Path(destination) if destination else backups_dir() / f"MinutasASH_Backup_{timestamp}.zip"
+    target = (
+        Path(destination) if destination else backups_dir() / f"MinutasASH_Backup_{timestamp}.zip"
+    )
     target.parent.mkdir(parents=True, exist_ok=True)
 
     ok, message = database.integrity_check()
@@ -152,7 +154,11 @@ def restore_backup(path: str | Path) -> dict:
 
 def prune_backups(retention_count: int = 5) -> list[Path]:
     retention = max(1, min(int(retention_count), 100))
-    files = sorted(backups_dir().glob("MinutasASH_Backup_*.zip"), key=lambda path: path.stat().st_mtime, reverse=True)
+    files = sorted(
+        backups_dir().glob("MinutasASH_Backup_*.zip"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
     removed: list[Path] = []
     for path in files[retention:]:
         try:
@@ -174,7 +180,11 @@ def maybe_create_automatic_backup(
     if not enabled:
         return None
     backups_dir().mkdir(parents=True, exist_ok=True)
-    existing = sorted(backups_dir().glob("MinutasASH_Backup_*.zip"), key=lambda path: path.stat().st_mtime, reverse=True)
+    existing = sorted(
+        backups_dir().glob("MinutasASH_Backup_*.zip"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
     if existing:
         modified = datetime.fromtimestamp(existing[0].stat().st_mtime)
         if datetime.now() - modified < timedelta(days=max(1, int(interval_days))):

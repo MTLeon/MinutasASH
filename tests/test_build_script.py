@@ -6,9 +6,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class BuildScriptRegressionTests(unittest.TestCase):
     def test_python_launcher_does_not_depend_on_scalar_count(self):
-        script = (ROOT / "build_tools" / "Build-Installer.ps1").read_text(
-            encoding="utf-8"
-        )
+        script = (ROOT / "build_tools" / "Build-Installer.ps1").read_text(encoding="utf-8")
 
         self.assertNotIn("$launcher.Count", script)
         self.assertIn("[PSCustomObject]", script)
@@ -18,6 +16,15 @@ class BuildScriptRegressionTests(unittest.TestCase):
         self.assertIn(r"Microsoft\WindowsApps", script)
         self.assertIn("sys.version_info >= (3, 12)", script)
         self.assertIn("sys.maxsize > 2**32", script)
+
+    def test_installer_smoke_keeps_whisper_profile_out_of_scope(self):
+        script = (ROOT / "scripts" / "Test-InstallerSmoke.ps1").read_text(encoding="utf-8")
+
+        self.assertIn("/TASKS= /DIR=$mainDir", script)
+        self.assertIn("/DIR=$whisperDir", script)
+        self.assertIn("gui_stable", script)
+        self.assertIn("whisper_help_exit", script)
+        self.assertNotIn("MinutasASH\\models\\whisper", script)
 
 
 if __name__ == "__main__":

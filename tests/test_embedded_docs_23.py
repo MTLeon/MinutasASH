@@ -14,6 +14,7 @@ class EmbeddedDocs23Tests(unittest.TestCase):
             "Manual_Configuracion_2.3.3.md": "Duración, recuperación y recursos",
             "Manual_Programador_2.3.3.md": "ProcessingPlan",
             "PROCESAMIENTO_RESILIENTE_2.3.3.md": "Checkpoints",
+            "QOL_TECLADO_Y_TABLAS_2.3.4.md": "Ctrl+S",
         }
         for filename, phrase in expected.items():
             path = ROOT / "docs" / filename

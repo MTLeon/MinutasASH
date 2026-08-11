@@ -37,10 +37,7 @@ class TemplateEngine23Tests(unittest.TestCase):
                 tables.extend(section.header.tables)
                 tables.extend(section.footer.tables)
             text = "\n".join(
-                cell.text
-                for table in tables
-                for row in table.rows
-                for cell in row.cells
+                cell.text for table in tables for row in table.rows for cell in row.cells
             )
             self.assertIn("P0000-MRE-PR-00", text)
             self.assertIn("ASH enviará los planos actualizados", text)

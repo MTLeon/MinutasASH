@@ -20,11 +20,22 @@ class UpdaterTests(unittest.TestCase):
         self.assertFalse(is_newer_version("2.1.0", "2.2.0", 2001000, 2002000))
 
     def test_update_source_configuration(self):
-        self.assertFalse(update_source_is_configured({"update_source": "manifest", "update_manifest_url": ""}))
-        self.assertTrue(update_source_is_configured({"update_source": "github", "github_owner": "ash", "github_repo": "minutas"}))
+        self.assertFalse(
+            update_source_is_configured({"update_source": "manifest", "update_manifest_url": ""})
+        )
+        self.assertTrue(
+            update_source_is_configured(
+                {"update_source": "github", "github_owner": "ash", "github_repo": "minutas"}
+            )
+        )
 
     def test_startup_check_is_disabled_without_source(self):
-        settings = {"update_enabled": True, "update_check_on_start": True, "update_source": "manifest", "update_manifest_url": ""}
+        settings = {
+            "update_enabled": True,
+            "update_check_on_start": True,
+            "update_source": "manifest",
+            "update_manifest_url": "",
+        }
         self.assertFalse(should_check_now(settings))
 
     @patch("src.updater._get_json")
