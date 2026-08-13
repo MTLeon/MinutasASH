@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime, timedelta
 
 from src.processing_jobs import ProcessingJobStore
 
@@ -42,3 +43,26 @@ def test_job_progress_is_clamped_and_errors_are_limited(tmp_path) -> None:
 
     assert failed.progress == 100
     assert len(failed.error) == 1000
+
+
+def test_prune_finalized_preserves_recoverable_jobs_and_retention_window(tmp_path) -> None:
+    store = ProcessingJobStore(tmp_path)
+    newest = store.create("new.vtt", "ollama_local", "qwen")
+    older = store.create("old.vtt", "ollama_local", "qwen")
+    interrupted = store.create("retry.vtt", "ollama_local", "qwen")
+    store.update(newest.job_id, status="completed", progress=100)
+    store.update(older.job_id, status="completed", progress=100)
+    store.update(interrupted.job_id, status="running", progress=10)
+    store.update(interrupted.job_id, status="interrupted")
+
+    stale = (datetime.now(UTC) - timedelta(days=31)).isoformat()
+    path = tmp_path / f"{older.job_id}.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["finished_at"] = stale
+    payload["updated_at"] = stale
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    assert store.prune_finalized(keep=1, max_age_days=30) == 1
+    assert store.get(newest.job_id) is not None
+    assert store.get(older.job_id) is None
+    assert store.get(interrupted.job_id) is not None

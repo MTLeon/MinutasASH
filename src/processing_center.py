@@ -3,7 +3,7 @@ from __future__ import annotations
 import threading
 import tkinter as tk
 from pathlib import Path
-from tkinter import ttk
+from tkinter import messagebox, ttk
 from typing import Any
 
 from src.processing_jobs import ProcessingJobStore
@@ -53,7 +53,10 @@ class ProcessingCenterDialog(tk.Toplevel):
         ttk.Button(heading, text="Actualizar", command=self.refresh).grid(
             row=0, column=2, padx=(8, 0)
         )
-        ttk.Button(heading, text="Cerrar", command=self.destroy).grid(row=0, column=3, padx=(8, 0))
+        ttk.Button(heading, text="Limpiar finalizados", command=self.prune_finalized).grid(
+            row=0, column=3, padx=(8, 0)
+        )
+        ttk.Button(heading, text="Cerrar", command=self.destroy).grid(row=0, column=4, padx=(8, 0))
 
         ttk.Label(root, textvariable=self.diagnostic_var).grid(
             row=1, column=0, sticky="w", pady=(10, 8)
@@ -108,6 +111,17 @@ class ProcessingCenterDialog(tk.Toplevel):
                 ),
             )
         self.status_var.set(f"{len(jobs)} ejecucion(es) reciente(s).")
+
+    def prune_finalized(self) -> None:
+        if not messagebox.askyesno(
+            "Limpiar historial",
+            "Se conservarán los 100 trabajos finalizados más recientes y todos los trabajos en espera, activos o interrumpidos. ¿Continuar?",
+            parent=self,
+        ):
+            return
+        removed = self.store.prune_finalized(keep=100, max_age_days=30)
+        self.refresh()
+        self.status_var.set(f"Se eliminaron {removed} ejecucion(es) finalizada(s) antiguas.")
 
     def check_provider(self) -> None:
         self.diagnostic_var.set("Verificando proveedor...")

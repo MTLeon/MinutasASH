@@ -118,6 +118,44 @@ class ProcessingJobStore:
                 recovered += 1
         return recovered
 
+    def prune_finalized(self, *, keep: int = 100, max_age_days: int = 30) -> int:
+        """Elimina solo trabajos finalizados que ya excedieron la retención.
+
+        Los trabajos en espera, activos o interrumpidos se conservan siempre para
+        no afectar la recuperación. La limpieza es explícita: la interfaz puede
+        mostrar el resultado antes de que el usuario la solicite.
+        """
+
+        keep = max(0, keep)
+        max_age_days = max(0, max_age_days)
+        now = datetime.now(UTC)
+        finalized = [job for job in self.list(limit=100_000) if job.status in FINAL_STATUSES]
+        finalized.sort(key=lambda item: item.finished_at or item.updated_at, reverse=True)
+        remove_ids: set[str] = set()
+        for position, job in enumerate(finalized):
+            timestamp = job.finished_at or job.updated_at
+            try:
+                moment = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+                if moment.tzinfo is None:
+                    moment = moment.replace(tzinfo=UTC)
+            except ValueError:
+                moment = now
+            expired = (now - moment).days >= max_age_days
+            if position >= keep or expired:
+                remove_ids.add(job.job_id)
+        removed = 0
+        with self._lock:
+            for job_id in remove_ids:
+                path = self.root / f"{job_id}.json"
+                try:
+                    path.unlink()
+                except FileNotFoundError:
+                    continue
+                except OSError:
+                    continue
+                removed += 1
+        return removed
+
     def _write(self, job: ProcessingJob) -> None:
         with self._lock:
             path = self.root / f"{job.job_id}.json"
