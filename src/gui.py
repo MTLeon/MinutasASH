@@ -316,6 +316,7 @@ class GuidedMinutasApp(LegacyMinutasApp):
         self.bind_all("<Control-Shift-s>", lambda _event: self.generate_document())
         self.bind_all("<Control-Shift-v>", lambda _event: self.open_manual_source_dialog())
         self.bind_all("<Control-comma>", lambda _event: self.open_preferences())
+        self.bind_all("<Control-f>", lambda _event: self._focus_search())
         self.bind_all("<Control-Return>", lambda _event: self._continue_flow())
         self.bind_all("<F5>", lambda _event: self.start_analysis())
         self.bind_all("<F1>", lambda _event: self.open_help_topic("usuario"))
@@ -343,6 +344,7 @@ Ctrl+N  Nueva minuta
 Ctrl+O  Abrir fuente
 Ctrl+S  Guardar borrador
 Ctrl+Shift+S  Generar Word
+Ctrl+F  Buscar en revisión o historial
 Ctrl+Enter  Continuar
 F5  Procesar reunión
 
@@ -358,6 +360,18 @@ Supr  Eliminar con deshacer
 Ctrl+Z  Deshacer""",
             parent=self,
         )
+
+    def _focus_search(self) -> str:
+        if self.notebook.select() == str(self.tab_history):
+            entry = self.history_search_entry
+        else:
+            if self.notebook.select() != str(self.tab_review):
+                self.notebook.select(self.tab_review)
+                self._update_step_navigation()
+            entry = self.review_search_entry
+        entry.focus_set()
+        entry.selection_range(0, "end")
+        return "break"
 
     @staticmethod
     def _select_all_tree(tree: ttk.Treeview, _event=None) -> str:
