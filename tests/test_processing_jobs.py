@@ -66,3 +66,20 @@ def test_prune_finalized_preserves_recoverable_jobs_and_retention_window(tmp_pat
     assert store.get(newest.job_id) is not None
     assert store.get(older.job_id) is None
     assert store.get(interrupted.job_id) is not None
+
+
+def test_discard_recoverable_only_removes_queued_or_interrupted_jobs(tmp_path) -> None:
+    store = ProcessingJobStore(tmp_path)
+    queued = store.create("queued.vtt", "ollama_local", "qwen")
+    interrupted = store.create("interrupted.vtt", "ollama_local", "qwen")
+    running = store.create("running.vtt", "ollama_local", "qwen")
+    store.update(interrupted.job_id, status="running")
+    store.update(interrupted.job_id, status="interrupted")
+    store.update(running.job_id, status="running")
+
+    assert store.discard_recoverable(queued.job_id)
+    assert store.discard_recoverable(interrupted.job_id)
+    assert not store.discard_recoverable(running.job_id)
+    assert store.get(queued.job_id) is None
+    assert store.get(interrupted.job_id) is None
+    assert store.get(running.job_id) is not None

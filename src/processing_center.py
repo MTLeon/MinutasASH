@@ -53,10 +53,13 @@ class ProcessingCenterDialog(tk.Toplevel):
         ttk.Button(heading, text="Actualizar", command=self.refresh).grid(
             row=0, column=2, padx=(8, 0)
         )
-        ttk.Button(heading, text="Limpiar finalizados", command=self.prune_finalized).grid(
+        ttk.Button(heading, text="Quitar pendiente", command=self.discard_selected).grid(
             row=0, column=3, padx=(8, 0)
         )
-        ttk.Button(heading, text="Cerrar", command=self.destroy).grid(row=0, column=4, padx=(8, 0))
+        ttk.Button(heading, text="Limpiar finalizados", command=self.prune_finalized).grid(
+            row=0, column=4, padx=(8, 0)
+        )
+        ttk.Button(heading, text="Cerrar", command=self.destroy).grid(row=0, column=5, padx=(8, 0))
 
         ttk.Label(root, textvariable=self.diagnostic_var).grid(
             row=1, column=0, sticky="w", pady=(10, 8)
@@ -111,6 +114,46 @@ class ProcessingCenterDialog(tk.Toplevel):
                 ),
             )
         self.status_var.set(f"{len(jobs)} ejecucion(es) reciente(s).")
+
+    def discard_selected(self) -> None:
+        selection = self.tree.selection()
+        if not selection:
+            messagebox.showinfo(
+                "Quitar pendiente",
+                "Seleccione un proceso en espera o interrumpido.",
+                parent=self,
+            )
+            return
+        job = self.store.get(selection[0])
+        if job is None:
+            self.refresh()
+            return
+        if job.status not in {"queued", "interrupted"}:
+            messagebox.showwarning(
+                "Quitar pendiente",
+                "Solo se pueden quitar procesos en espera o interrumpidos. "
+                "Los procesos activos deben cancelarse desde la ventana principal.",
+                parent=self,
+            )
+            return
+        state = STATUS_LABELS[job.status].lower()
+        if not messagebox.askyesno(
+            "Quitar pendiente",
+            f"Se quitará de la cola el proceso {state}: {Path(job.source_path).name}.\n\n"
+            "No se eliminará el archivo de origen. ¿Continuar?",
+            parent=self,
+        ):
+            return
+        if self.store.discard_recoverable(job.job_id):
+            self.refresh()
+            self.status_var.set("Proceso pendiente retirado de la cola.")
+        else:
+            self.refresh()
+            messagebox.showwarning(
+                "Quitar pendiente",
+                "El proceso cambió de estado antes de poder retirarlo. Actualice la lista.",
+                parent=self,
+            )
 
     def prune_finalized(self) -> None:
         if not messagebox.askyesno(
