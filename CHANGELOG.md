@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.3.5] - 2026-08-13
+
+- Actualizador compatible con instaladores de GitHub distribuidos en varias partes.
+- Reconstrucción local y verificación SHA-256 del instalador antes de ejecutarlo.
+- Canal público de releases configurado como origen predeterminado para nuevas instalaciones.
+
 ## [2.3.4] - 2026-08-11
 
 ### Añadido

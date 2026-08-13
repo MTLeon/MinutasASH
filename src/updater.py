@@ -31,6 +31,7 @@ class UpdateInfo:
     published_at: str | None = None
     source: str = "manifest"
     release_sequence: int | None = None
+    installer_parts: tuple[str, ...] = ()
 
 
 def _version_tuple(value: str) -> tuple[int, ...]:
@@ -177,7 +178,19 @@ def check_github_release(
         ),
         None,
     )
-    if not installer:
+    parts: list[tuple[int, str]] = []
+    for asset in assets:
+        if not isinstance(asset, dict):
+            continue
+        name = str(asset.get("name", ""))
+        match = re.search(r"\.exe\.part(\d+)$", name, flags=re.IGNORECASE)
+        if match and "minutasash_setup" in name.lower():
+            url = str(asset.get("browser_download_url") or "")
+            if url.startswith("https://"):
+                parts.append((int(match.group(1)), url))
+    parts.sort(key=lambda item: item[0])
+    part_urls = tuple(url for _number, url in parts)
+    if not installer and not part_urls:
         raise UpdateError("La release no contiene el instalador de Minutas ASH.")
     checksum_asset = next(
         (
@@ -195,13 +208,14 @@ def check_github_release(
     version = str(release.get("tag_name") or release.get("name") or "").lstrip("v")
     return UpdateInfo(
         version=version,
-        installer_url=str(installer.get("browser_download_url")),
+        installer_url=(str(installer.get("browser_download_url")) if installer else part_urls[0]),
         sha256=sha256,
         release_notes=str(release.get("body") or ""),
         mandatory=False,
         published_at=str(release.get("published_at") or "") or None,
         source="github",
         release_sequence=None,
+        installer_parts=part_urls,
     )
 
 
@@ -255,31 +269,33 @@ def download_update(
     progress = progress or (lambda _value, _text: None)
     updates_dir = user_data_root() / "updates"
     updates_dir.mkdir(parents=True, exist_ok=True)
-    filename = (
-        Path(info.installer_url.split("?", 1)[0]).name or f"MinutasASH_Setup_{info.version}.exe"
-    )
+    source_urls = info.installer_parts or (info.installer_url,)
+    source_name = Path(source_urls[0].split("?", 1)[0]).name
+    filename = re.sub(r"\.part\d+$", "", source_name, flags=re.IGNORECASE)
+    filename = filename or f"MinutasASH_Setup_{info.version}.exe"
     final_path = updates_dir / filename
     temporary = final_path.with_suffix(final_path.suffix + ".download")
     digest = hashlib.sha256()
     try:
-        with requests.get(info.installer_url, stream=True, timeout=(30, 300)) as response:
-            response.raise_for_status()
-            total = int(response.headers.get("content-length") or 0)
-            completed = 0
-            with temporary.open("wb") as handle:
-                for chunk in response.iter_content(chunk_size=1024 * 1024):
-                    if not chunk:
-                        continue
-                    handle.write(chunk)
-                    digest.update(chunk)
-                    completed += len(chunk)
-                    value = int(completed * 100 / total) if total else 0
-                    progress(
-                        value,
-                        f"Descargando actualización... {value}%"
-                        if total
-                        else "Descargando actualización...",
-                    )
+        with temporary.open("wb") as handle:
+            for part_index, url in enumerate(source_urls, start=1):
+                with requests.get(url, stream=True, timeout=(30, 300)) as response:
+                    response.raise_for_status()
+                    total = int(response.headers.get("content-length") or 0)
+                    completed = 0
+                    for chunk in response.iter_content(chunk_size=1024 * 1024):
+                        if not chunk:
+                            continue
+                        handle.write(chunk)
+                        digest.update(chunk)
+                        completed += len(chunk)
+                        value = int(completed * 100 / total) if total else 0
+                        prefix = (
+                            f"Descargando parte {part_index}/{len(source_urls)}"
+                            if len(source_urls) > 1
+                            else "Descargando actualización"
+                        )
+                        progress(value, f"{prefix}... {value}%" if total else f"{prefix}...")
     except requests.RequestException as exc:
         temporary.unlink(missing_ok=True)
         raise UpdateError(f"No fue posible descargar la actualización: {exc}") from exc

@@ -1,4 +1,4 @@
-#define AppVersion "2.3.4"
+#define AppVersion "2.3.5"
 
 [Setup]
 AppId={{5D907A8F-558D-4D2C-A90C-6308FF76C2D9}
@@ -11,7 +11,7 @@ PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir=..\dist_installer
-OutputBaseFilename=MinutasASH_Whisper_CPU_2.3.4
+OutputBaseFilename=MinutasASH_Whisper_CPU_2.3.5
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern

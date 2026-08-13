@@ -91,7 +91,7 @@ def _run(args: argparse.Namespace, logger: logging.Logger) -> int:
         docx_path=str(docx),
         json_path=str(json_path),
         pdf_path=str(docx.with_suffix(".pdf")) if docx.with_suffix(".pdf").is_file() else None,
-        app_version=str(config.get("app_version", "2.3.4")),
+        app_version=str(config.get("app_version", "2.3.5")),
         document_provider=str(config.get("document_provider", "ash_minutes_v1")),
         processing_provider=bundle.provider_id,
         processing_provider_name=bundle.provider_name,

@@ -20,8 +20,8 @@ class AppSettings(BaseModel):
 
     model_config = ConfigDict(extra="ignore", str_strip_whitespace=True)
 
-    app_version: str = "2.3.4"
-    release_sequence: int = Field(default=2003004, ge=1)
+    app_version: str = "2.3.5"
+    release_sequence: int = Field(default=2003005, ge=1)
     product_generation: int = Field(default=2, ge=1)
     legacy_predecessor: str = "2.3.2"
     schema_version: int = Field(default=6, ge=1)
@@ -193,11 +193,11 @@ class AppSettings(BaseModel):
     update_enabled: bool = True
     update_check_on_start: bool = True
     update_check_interval_hours: int = Field(default=24, ge=1, le=720)
-    update_source: Literal["manifest", "github"] = "manifest"
+    update_source: Literal["manifest", "github"] = "github"
     update_channel: Literal["stable", "beta"] = "stable"
     update_manifest_url: str = ""
-    github_owner: str = ""
-    github_repo: str = ""
+    github_owner: str = "MTLeon"
+    github_repo: str = "MinutasASH-Releases"
     update_allow_prerelease: bool = False
     update_last_checked_at: str | None = None
 
