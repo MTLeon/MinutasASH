@@ -142,6 +142,7 @@ class OllamaClient:
             **self._operation,
             **payload,
         }
+        # La telemetría es observacional: nunca debe abortar la transcripción o el análisis.
         with contextlib.suppress(Exception):
             self._telemetry(event)
 

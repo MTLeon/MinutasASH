@@ -1116,8 +1116,7 @@ Ctrl+Z  Deshacer""",
         if step == "meeting":
             if not self._validate_meeting_step():
                 return
-            with contextlib.suppress(Exception):
-                self.detect_speakers(switch_tab=False)
+            self.detect_speakers(switch_tab=False)
             self._select_step("attendees")
         elif step == "attendees":
             self.start_analysis()

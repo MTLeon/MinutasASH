@@ -53,7 +53,7 @@ class ProcessingCenterDialog(tk.Toplevel):
         ttk.Button(heading, text="Actualizar", command=self.refresh).grid(
             row=0, column=2, padx=(8, 0)
         )
-        ttk.Button(heading, text="Quitar pendiente", command=self.discard_selected).grid(
+        ttk.Button(heading, text="Quitar pendientes", command=self.discard_selected).grid(
             row=0, column=3, padx=(8, 0)
         )
         ttk.Button(heading, text="Limpiar finalizados", command=self.prune_finalized).grid(
@@ -66,7 +66,7 @@ class ProcessingCenterDialog(tk.Toplevel):
         )
 
         columns = ("updated", "status", "source", "provider", "progress", "message")
-        self.tree = ttk.Treeview(root, columns=columns, show="headings", selectmode="browse")
+        self.tree = ttk.Treeview(root, columns=columns, show="headings", selectmode="extended")
         headings = {
             "updated": "Actualizado",
             "status": "Estado",
@@ -119,39 +119,45 @@ class ProcessingCenterDialog(tk.Toplevel):
         selection = self.tree.selection()
         if not selection:
             messagebox.showinfo(
-                "Quitar pendiente",
-                "Seleccione un proceso en espera o interrumpido.",
+                "Quitar pendientes",
+                "Seleccione uno o más procesos en espera o interrumpidos.",
                 parent=self,
             )
             return
-        job = self.store.get(selection[0])
-        if job is None:
+        jobs = [job for item_id in selection if (job := self.store.get(item_id)) is not None]
+        if len(jobs) != len(selection):
             self.refresh()
-            return
-        if job.status not in {"queued", "interrupted"}:
             messagebox.showwarning(
-                "Quitar pendiente",
+                "Quitar pendientes",
+                "La lista cambió antes de completar la acción. Revísela e inténtelo nuevamente.",
+                parent=self,
+            )
+            return
+        invalid = [job for job in jobs if job.status not in {"queued", "interrupted"}]
+        if invalid:
+            messagebox.showwarning(
+                "Quitar pendientes",
                 "Solo se pueden quitar procesos en espera o interrumpidos. "
                 "Los procesos activos deben cancelarse desde la ventana principal.",
                 parent=self,
             )
             return
-        state = STATUS_LABELS[job.status].lower()
+        count = len(jobs)
         if not messagebox.askyesno(
-            "Quitar pendiente",
-            f"Se quitará de la cola el proceso {state}: {Path(job.source_path).name}.\n\n"
-            "No se eliminará el archivo de origen. ¿Continuar?",
+            "Quitar pendientes",
+            f"Se quitarán {count} proceso(s) pendiente(s) de la cola.\n\n"
+            "No se eliminarán los archivos de origen. ¿Continuar?",
             parent=self,
         ):
             return
-        if self.store.discard_recoverable(job.job_id):
-            self.refresh()
-            self.status_var.set("Proceso pendiente retirado de la cola.")
+        removed = sum(self.store.discard_recoverable(job.job_id) for job in jobs)
+        self.refresh()
+        if removed == count:
+            self.status_var.set(f"Se retiraron {removed} proceso(s) pendiente(s) de la cola.")
         else:
-            self.refresh()
             messagebox.showwarning(
-                "Quitar pendiente",
-                "El proceso cambió de estado antes de poder retirarlo. Actualice la lista.",
+                "Quitar pendientes",
+                f"Se retiraron {removed} de {count} proceso(s); los restantes cambiaron de estado.",
                 parent=self,
             )
 

@@ -924,10 +924,12 @@ class MinutasApp(tk.Tk):
     def _load_default_metadata(self) -> None:
         default = source_root() / "entrada" / "datos_reunion.json"
         if default.exists():
-            with contextlib.suppress(Exception):
+            try:
                 self._apply_metadata(
                     MeetingMetadata.model_validate_json(default.read_text(encoding="utf-8-sig"))
                 )
+            except (OSError, json.JSONDecodeError, ValidationError) as exc:
+                self.logger.warning("No se pudieron cargar los metadatos predeterminados: %s", exc)
 
     def _metadata_from_form(self) -> MeetingMetadata:
         payload: dict[str, Any] = {
@@ -977,8 +979,7 @@ class MinutasApp(tk.Tk):
             self._refresh_items_tree()
             self.word_button.configure(state="disabled")
             self._log(f"Transcripción seleccionada: {path}")
-            with contextlib.suppress(Exception):
-                self.detect_speakers(switch_tab=False)
+            self.detect_speakers(switch_tab=False)
 
     def _accept_vtt_path(self, path: Path) -> bool:
         self.vtt_var.set(str(path))
@@ -989,8 +990,7 @@ class MinutasApp(tk.Tk):
         self._refresh_items_tree()
         self.word_button.configure(state="disabled")
         self._log(f"Transcripción seleccionada: {path}")
-        with contextlib.suppress(Exception):
-            self.detect_speakers(switch_tab=False)
+        self.detect_speakers(switch_tab=False)
         return True
 
     def browse_output(self) -> None:
@@ -1388,8 +1388,10 @@ class MinutasApp(tk.Tk):
         job_store = ProcessingJobStore()
 
         def report_progress(value: int, message: str) -> None:
-            with contextlib.suppress(Exception):
+            try:
                 job_store.update(job_id, status="running", progress=value, message=message)
+            except (KeyError, OSError, TypeError, ValueError) as exc:
+                self.logger.warning("No se pudo guardar el avance del trabajo %s: %s", job_id, exc)
             self.worker_queue.put(("progress", (value, message)))
 
         try:
@@ -1404,22 +1406,32 @@ class MinutasApp(tk.Tk):
                     telemetry=lambda event: self.worker_queue.put(("telemetry", event)),
                     cancelled=lambda: self.cancel_requested,
                 )
-            with contextlib.suppress(Exception):
+            try:
                 job_store.update(
                     job_id,
                     status="completed",
                     progress=100,
                     message="Contenido listo para revision",
                 )
+            except (KeyError, OSError, TypeError, ValueError) as exc:
+                self.logger.warning(
+                    "No se pudo cerrar el trabajo %s como completado: %s", job_id, exc
+                )
             self.worker_queue.put(("analysis_success", bundle))
         except Exception as exc:
             status: JobStatus = "cancelled" if isinstance(exc, InterruptedError) else "failed"
-            with contextlib.suppress(Exception):
+            try:
                 job_store.update(
                     job_id,
                     status=status,
                     message=str(exc),
                     error=str(exc) if status == "failed" else "",
+                )
+            except (KeyError, OSError, TypeError, ValueError) as persistence_error:
+                self.logger.warning(
+                    "No se pudo guardar el estado final del trabajo %s: %s",
+                    job_id,
+                    persistence_error,
                 )
             self.worker_queue.put(("error", exc))
 
@@ -2182,13 +2194,15 @@ class MinutasApp(tk.Tk):
             self.cancel_requested = True
             job_id = getattr(self, "active_processing_job_id", "")
             if job_id:
-                with contextlib.suppress(Exception):
+                try:
                     self.processing_job_store.update(
                         job_id,
                         status="running",
                         progress=int(self.progress_var.get()),
                         message="Cancelacion solicitada; guardando avance",
                     )
+                except (KeyError, OSError, TypeError, ValueError) as exc:
+                    self.logger.warning("No se pudo guardar la cancelacion de %s: %s", job_id, exc)
             self.cancel_button.configure(state="disabled")
             self.progress_text_var.set("Cancelando solicitud actual y guardando avance...")
             self._log("Se solicitó cancelar la solicitud actual y conservar el avance.")

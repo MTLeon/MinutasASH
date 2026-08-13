@@ -109,6 +109,7 @@ def _configure_request(
 
 
 def _emit(telemetry: TelemetryCallback, event_type: str, **payload: Any) -> None:
+    # La telemetría es opcional: un observador defectuoso no puede perder trabajo del usuario.
     with contextlib.suppress(Exception):
         telemetry({"type": event_type, **payload})
 
