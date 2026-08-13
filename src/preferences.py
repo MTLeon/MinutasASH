@@ -253,6 +253,12 @@ class PreferencesDialog(tk.Toplevel):
         self.inbox_auto_start_var = tk.BooleanVar(
             value=bool(self.working.get("inbox_auto_start_processing", False))
         )
+        self.inbox_recursive_var = tk.BooleanVar(
+            value=bool(self.working.get("inbox_scan_recursively", True))
+        )
+        self.inbox_max_files_var = tk.IntVar(
+            value=int(self.working.get("inbox_scan_max_files", 500))
+        )
         self.review_exceptions_var = tk.BooleanVar(
             value=bool(self.working.get("review_by_exceptions", False))
         )
@@ -387,11 +393,27 @@ class PreferencesDialog(tk.Toplevel):
         ).grid(row=3, column=0, sticky="w", pady=7)
         ttk.Checkbutton(
             frame,
+            text="Incluir subcarpetas de OneDrive o Teams sincronizado",
+            variable=self.inbox_recursive_var,
+        ).grid(row=4, column=0, sticky="w", pady=7)
+        inbox_limit = ttk.Frame(frame)
+        inbox_limit.grid(row=5, column=0, sticky="w", pady=7)
+        ttk.Label(inbox_limit, text="Máximo de archivos por escaneo").pack(side="left")
+        ttk.Spinbox(
+            inbox_limit,
+            from_=10,
+            to=10000,
+            increment=10,
+            textvariable=self.inbox_max_files_var,
+            width=8,
+        ).pack(side="left", padx=(12, 0))
+        ttk.Checkbutton(
+            frame,
             text="Revisar por excepciones y preaprobar puntos confiables",
             variable=self.review_exceptions_var,
-        ).grid(row=4, column=0, sticky="w", pady=7)
+        ).grid(row=6, column=0, sticky="w", pady=7)
         threshold = ttk.Frame(frame)
-        threshold.grid(row=5, column=0, sticky="w", pady=7)
+        threshold.grid(row=7, column=0, sticky="w", pady=7)
         ttk.Label(threshold, text="Confianza minima para preaprobar").pack(side="left")
         ttk.Spinbox(
             threshold, from_=70, to=100, textvariable=self.review_threshold_var, width=8
@@ -401,17 +423,17 @@ class PreferencesDialog(tk.Toplevel):
             frame,
             text="Generar el documento cuando no queden excepciones",
             variable=self.auto_generate_var,
-        ).grid(row=6, column=0, sticky="w", pady=7)
+        ).grid(row=8, column=0, sticky="w", pady=7)
         ttk.Checkbutton(
             frame,
             text="Generar tambien una copia PDF",
             variable=self.generate_pdf_var,
-        ).grid(row=7, column=0, sticky="w", pady=7)
+        ).grid(row=9, column=0, sticky="w", pady=7)
         ttk.Checkbutton(
             frame,
             text="Mostrar una notificacion local al completar",
             variable=self.notify_completion_var,
-        ).grid(row=8, column=0, sticky="w", pady=7)
+        ).grid(row=10, column=0, sticky="w", pady=7)
         ttk.Label(
             frame,
             text=(
@@ -421,7 +443,7 @@ class PreferencesDialog(tk.Toplevel):
             style="Muted.TLabel",
             wraplength=680,
             justify="left",
-        ).grid(row=9, column=0, sticky="w", pady=(16, 0))
+        ).grid(row=11, column=0, sticky="w", pady=(16, 0))
 
     def _build_processing(self, frame: ttk.Frame) -> None:
         frame.columnconfigure(1, weight=1)
@@ -963,6 +985,8 @@ class PreferencesDialog(tk.Toplevel):
                 "numbering_auto_suggest": bool(self.numbering_auto_var.get()),
                 "inbox_automation_enabled": bool(self.inbox_automation_var.get()),
                 "inbox_auto_start_processing": bool(self.inbox_auto_start_var.get()),
+                "inbox_scan_recursively": bool(self.inbox_recursive_var.get()),
+                "inbox_scan_max_files": int(self.inbox_max_files_var.get()),
                 "review_by_exceptions": bool(self.review_exceptions_var.get()),
                 "review_auto_approval_threshold": int(self.review_threshold_var.get()) / 100,
                 "automation_auto_generate_document": bool(self.auto_generate_var.get()),

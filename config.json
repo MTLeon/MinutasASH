@@ -128,6 +128,8 @@
     "inbox_automation_enabled":  false,
     "inbox_auto_start_processing":  false,
     "inbox_automation_max_retries":  3,
+    "inbox_scan_recursively":  true,
+    "inbox_scan_max_files":  500,
     "review_by_exceptions":  false,
     "review_auto_approval_threshold":  0.9,
     "automation_auto_generate_document":  false,

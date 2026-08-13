@@ -106,11 +106,13 @@ class InboxAutomationStore:
         *,
         max_retries: int = 3,
         processing_stale_seconds: float = 3600,
+        recursive: bool = False,
+        max_files: int = 500,
     ) -> list[InboxItem]:
         records = self._load()
         now = time.time()
         result: list[InboxItem] = []
-        for item in scan_inbox(directory):
+        for item in scan_inbox(directory, recursive=recursive, max_files=max_files):
             if not item.ready:
                 continue
             fingerprint = source_sha256(item.path)

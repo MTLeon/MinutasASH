@@ -890,12 +890,22 @@ Ctrl+Z  Deshacer""",
                 ready_items = self.inbox_automation_store.discover(
                     directory,
                     max_retries=int(self.config_data.get("inbox_automation_max_retries", 3)),
+                    recursive=bool(self.config_data.get("inbox_scan_recursively", True)),
+                    max_files=int(self.config_data.get("inbox_scan_max_files", 500)),
                 )
                 if ready_items and not self.busy and not self._automation_claim_scheduled:
                     self._automation_claim_scheduled = True
                     self.after_idle(self._consume_automated_inbox)
             else:
-                ready_items = [item for item in scan_inbox(directory) if item.ready]
+                ready_items = [
+                    item
+                    for item in scan_inbox(
+                        directory,
+                        recursive=bool(self.config_data.get("inbox_scan_recursively", True)),
+                        max_files=int(self.config_data.get("inbox_scan_max_files", 500)),
+                    )
+                    if item.ready
+                ]
             if hasattr(self, "inbox_button"):
                 self.inbox_button.configure(text=f"Bandeja ({len(ready_items)})")
         except OSError as exc:
@@ -910,6 +920,8 @@ Ctrl+Z  Deshacer""",
         candidates = self.inbox_automation_store.discover(
             inbox_dir(),
             max_retries=int(self.config_data.get("inbox_automation_max_retries", 3)),
+            recursive=bool(self.config_data.get("inbox_scan_recursively", True)),
+            max_files=int(self.config_data.get("inbox_scan_max_files", 500)),
         )
         if not candidates:
             return
@@ -973,7 +985,15 @@ Ctrl+Z  Deshacer""",
     def _open_inbox(self) -> None:
         directory = inbox_dir()
         directory.mkdir(parents=True, exist_ok=True)
-        ready = [item for item in scan_inbox(directory) if item.ready]
+        ready = [
+            item
+            for item in scan_inbox(
+                directory,
+                recursive=bool(self.config_data.get("inbox_scan_recursively", True)),
+                max_files=int(self.config_data.get("inbox_scan_max_files", 500)),
+            )
+            if item.ready
+        ]
         if not ready:
             messagebox.showinfo(
                 "Bandeja de entrada",

@@ -157,6 +157,8 @@ class AppSettings(BaseModel):
     inbox_automation_enabled: bool = False
     inbox_auto_start_processing: bool = False
     inbox_automation_max_retries: int = Field(default=3, ge=1, le=10)
+    inbox_scan_recursively: bool = True
+    inbox_scan_max_files: int = Field(default=500, ge=10, le=10000)
     review_by_exceptions: bool = False
     review_auto_approval_threshold: float = Field(default=0.90, ge=0.70, le=1.0)
     automation_auto_generate_document: bool = False
