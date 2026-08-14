@@ -16,6 +16,7 @@
 - `PROVEEDORES_PROCESAMIENTO.md`
 - `PROCESAMIENTO_RESILIENTE_2.3.3.md`
 - `CONTROL_COBERTURA.md`
+- PLATAFORMA_WEB_WINDOWS_SERVER.md: preparación de PostgreSQL, IIS, seguridad y operación en Windows Server 2022.
 
 ## Calidad y planificación
 
