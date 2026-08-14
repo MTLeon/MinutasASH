@@ -1795,6 +1795,7 @@ Ctrl+Z  Deshacer""",
                     source_path,
                     model_name=str(self.config_data.get("whisper_model", "base")),
                     language=str(self.config_data.get("transcription_language", "es")),
+                    cpu_threads=int(self.config_data.get("whisper_cpu_threads", 0)),
                     diarization_enabled=bool(self.config_data.get("diarization_enabled", False)),
                     diarization_worker=str(self.config_data.get("diarization_worker_path", ""))
                     or None,

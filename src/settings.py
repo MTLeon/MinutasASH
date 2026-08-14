@@ -20,8 +20,8 @@ class AppSettings(BaseModel):
 
     model_config = ConfigDict(extra="ignore", str_strip_whitespace=True)
 
-    app_version: str = "2.3.6"
-    release_sequence: int = Field(default=2003005, ge=1)
+    app_version: str = "2.3.7"
+    release_sequence: int = Field(default=2003006, ge=1)
     product_generation: int = Field(default=2, ge=1)
     legacy_predecessor: str = "2.3.2"
     schema_version: int = Field(default=6, ge=1)
@@ -144,6 +144,7 @@ class AppSettings(BaseModel):
     flexible_sources_enabled: bool = True
     whisper_model: Literal["base", "small"] = "base"
     transcription_language: str = "es"
+    whisper_cpu_threads: int = Field(default=0, ge=0, le=64)
     diarization_enabled: bool = False
     diarization_worker_path: str = ""
     transcription_quality_warning: bool = True

@@ -10,8 +10,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class ReleaseIdentityTests(unittest.TestCase):
     def test_second_generation_identity(self):
-        self.assertEqual(APP_VERSION, "2.3.6")
-        self.assertEqual(RELEASE_SEQUENCE, 2003005)
+        self.assertEqual(APP_VERSION, "2.3.7")
+        self.assertEqual(RELEASE_SEQUENCE, 2003006)
         self.assertEqual(DATABASE_SCHEMA_VERSION, 8)
 
     def test_windows_resources_and_installer_match_release(self):
@@ -19,9 +19,9 @@ class ReleaseIdentityTests(unittest.TestCase):
         installer = (ROOT / "installer" / "MinutasASH.iss").read_text(encoding="utf-8")
         self.assertIn("filevers=(2, 3, 4, 0)", version_info)
         self.assertIn("prodvers=(2, 3, 4, 0)", version_info)
-        self.assertIn("FileVersion', '2.3.6'", version_info)
-        self.assertIn('#define MyAppVersion "2.3.6"', installer)
-        self.assertIn("MinutasASH_Setup_2.3.6_Online", installer)
+        self.assertIn("FileVersion', '2.3.7'", version_info)
+        self.assertIn('#define MyAppVersion "2.3.7"', installer)
+        self.assertIn("MinutasASH_Setup_2.3.7_Online", installer)
 
 
 if __name__ == "__main__":

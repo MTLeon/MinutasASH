@@ -52,6 +52,7 @@ def main() -> int:
     parser.add_argument("--download-only", action="store_true")
     parser.add_argument("--model", choices=("base", "small"), default="base")
     parser.add_argument("--language", default="es")
+    parser.add_argument("--cpu-threads", type=int, default=0)
     args = parser.parse_args()
     try:
         if args.prepare_audio:
@@ -78,7 +79,10 @@ def main() -> int:
         if not args.source:
             parser.error("--source es obligatorio para transcribir")
         segments, language, probability = transcribe(
-            Path(args.source), model_name=args.model, language=args.language
+            Path(args.source),
+            model_name=args.model,
+            language=args.language,
+            cpu_threads=args.cpu_threads,
         )
         emit_json(
             {

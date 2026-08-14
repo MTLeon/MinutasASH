@@ -1,6 +1,6 @@
 [project]
 name = "minutas-ash"
-version = "2.3.6"
+version = "2.3.7"
 description = "Aplicación de escritorio para preparar minutas corporativas ASH desde transcripciones de Microsoft Teams."
 requires-python = ">=3.12,<3.15"
 dependencies = [

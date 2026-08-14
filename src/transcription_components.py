@@ -45,6 +45,41 @@ class TranscribedSegment:
     text: str
 
 
+@dataclass(frozen=True)
+class TranscriptionRuntimeProfile:
+    """CPU settings used by one local Whisper transcription.
+
+    ``num_workers`` deliberately stays at one: the CTranslate2 worker pool is
+    intended for simultaneous requests, not to divide a single meeting. A
+    bounded CPU count keeps the Windows interface responsive during long runs.
+    """
+
+    requested_cpu_threads: int
+    effective_cpu_threads: int
+    num_workers: int = 1
+
+
+def transcription_runtime_profile(
+    cpu_threads: int = 0, *, logical_processors: int | None = None
+) -> TranscriptionRuntimeProfile:
+    """Resolve a safe CPU budget; zero means automatic.
+
+    Automatic mode reserves two logical processors for Windows and the GUI and
+    caps Whisper at eight threads. The cap avoids memory pressure on 16 GB
+    laptops while still using the physical cores common on Ryzen 7 machines.
+    """
+    if not 0 <= cpu_threads <= 64:
+        raise ValueError("Los hilos de CPU de Whisper deben estar entre 0 y 64.")
+    processors = logical_processors if logical_processors is not None else (os.cpu_count() or 4)
+    if processors < 1:
+        processors = 1
+    effective = cpu_threads or min(8, max(1, processors - 2))
+    return TranscriptionRuntimeProfile(
+        requested_cpu_threads=cpu_threads,
+        effective_cpu_threads=min(effective, processors),
+    )
+
+
 def worker_path() -> Path:
     base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
     return Path(base) / "MinutasASH" / "components" / "whisper" / "WhisperWorker.exe"
@@ -104,6 +139,7 @@ def transcribe(
     language: str | None = "es",
     cache_dir: Path | None = None,
     progress: Callable[[float], None] | None = None,
+    cpu_threads: int = 0,
 ) -> tuple[list[TranscribedSegment], str | None, float | None]:
     if model_name not in MODELS:
         raise ValueError(f"Modelo Whisper no permitido: {model_name}")
@@ -117,8 +153,14 @@ def transcribe(
         raise RuntimeError("El complemento de transcripción no está instalado.") from exc
     cache = cache_dir or default_model_cache()
     cache.mkdir(parents=True, exist_ok=True)
+    runtime = transcription_runtime_profile(cpu_threads)
     model = FasterWhisperModel(
-        model_name, device="cpu", compute_type="int8", download_root=str(cache)
+        model_name,
+        device="cpu",
+        compute_type="int8",
+        download_root=str(cache),
+        cpu_threads=runtime.effective_cpu_threads,
+        num_workers=runtime.num_workers,
     )
     raw_segments, info = model.transcribe(
         str(media_path), language=language, vad_filter=True, beam_size=5

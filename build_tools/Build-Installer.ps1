@@ -144,15 +144,15 @@ if (-not $Iscc) {
 Write-Step 'Creando wizard de instalación final'
 $InstallerOutput = Join-Path $Root 'dist_installer'
 New-Item -ItemType Directory -Force -Path $InstallerOutput | Out-Null
-Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $InstallerOutput 'MinutasASH_Setup_2.3.6_Online.exe')
-Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $InstallerOutput 'MinutasASH_Setup_2.3.6_Online_SHA256.txt')
+Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $InstallerOutput 'MinutasASH_Setup_2.3.7_Online.exe')
+Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $InstallerOutput 'MinutasASH_Setup_2.3.7_Online_SHA256.txt')
 & $Iscc (Join-Path $Root 'installer\MinutasASH.iss')
 if ($LASTEXITCODE -ne 0) { throw 'Inno Setup no pudo compilar el instalador.' }
 
-$Setup = Join-Path $Root 'dist_installer\MinutasASH_Setup_2.3.6_Online.exe'
+$Setup = Join-Path $Root 'dist_installer\MinutasASH_Setup_2.3.7_Online.exe'
 if (-not (Test-Path $Setup)) { throw 'No se encontró el instalador final.' }
 $Hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $Setup).Hash.ToLowerInvariant()
-$HashFile = Join-Path $Root 'dist_installer\MinutasASH_Setup_2.3.6_Online_SHA256.txt'
+$HashFile = Join-Path $Root 'dist_installer\MinutasASH_Setup_2.3.7_Online_SHA256.txt'
 "$Hash  $(Split-Path -Leaf $Setup)" | Set-Content -Encoding ASCII $HashFile
 
 Write-Host "`nConstrucción finalizada:" -ForegroundColor Green

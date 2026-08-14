@@ -275,6 +275,7 @@ def transcribe_media(
     language: str = "es",
     diarization_enabled: bool = False,
     diarization_worker: str | Path | None = None,
+    cpu_threads: int = 0,
 ) -> Path:
     source_path = Path(source).expanduser().resolve()
     if not source_path.is_file():
@@ -290,6 +291,7 @@ def transcribe_media(
             source_path,
             model_name=selected_model,
             language=language,
+            cpu_threads=cpu_threads,
         )
         result: dict[str, Any] = {
             "language": detected_language,
@@ -314,6 +316,8 @@ def transcribe_media(
                 model_name,
                 "--language",
                 language,
+                "--cpu-threads",
+                str(cpu_threads),
             ],
             capture_output=True,
             text=True,
@@ -371,6 +375,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--idioma", default="es", help="Código del idioma hablado")
     parser.add_argument("--diarizar", action="store_true", help="Usar RTTM o motor externo")
     parser.add_argument("--motor-diarizacion", default=None)
+    parser.add_argument(
+        "--hilos-cpu", type=int, default=0, help="0 usa el perfil automatico equilibrado"
+    )
     return parser.parse_args()
 
 
@@ -384,6 +391,7 @@ def main() -> int:
             language=args.idioma,
             diarization_enabled=args.diarizar,
             diarization_worker=args.motor_diarizacion,
+            cpu_threads=args.hilos_cpu,
         )
     except Exception as exc:
         print(f"ERROR: {exc}")

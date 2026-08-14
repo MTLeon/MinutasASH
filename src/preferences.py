@@ -489,6 +489,9 @@ class PreferencesDialog(tk.Toplevel):
         self.transcription_language_var = tk.StringVar(
             value=str(self.working.get("transcription_language", "es"))
         )
+        self.whisper_cpu_threads_var = tk.IntVar(
+            value=int(self.working.get("whisper_cpu_threads", 0))
+        )
         self.diarization_enabled_var = tk.BooleanVar(
             value=bool(self.working.get("diarization_enabled", False))
         )
@@ -627,22 +630,28 @@ class PreferencesDialog(tk.Toplevel):
         ttk.Entry(transcription, textvariable=self.transcription_language_var).grid(
             row=1, column=1, sticky="ew", pady=4
         )
+        ttk.Label(transcription, text="Hilos CPU (0 = automático)").grid(
+            row=2, column=0, sticky="w", padx=(0, 12), pady=4
+        )
+        ttk.Spinbox(
+            transcription, from_=0, to=64, textvariable=self.whisper_cpu_threads_var, width=8
+        ).grid(row=2, column=1, sticky="w", pady=4)
         ttk.Checkbutton(
             transcription,
             text="Aplicar diarización desde RTTM o motor externo",
             variable=self.diarization_enabled_var,
-        ).grid(row=2, column=0, columnspan=2, sticky="w", pady=4)
+        ).grid(row=3, column=0, columnspan=2, sticky="w", pady=4)
         ttk.Label(transcription, text="Motor externo (opcional)").grid(
-            row=3, column=0, sticky="w", padx=(0, 12), pady=4
+            row=4, column=0, sticky="w", padx=(0, 12), pady=4
         )
         ttk.Entry(transcription, textvariable=self.diarization_worker_var).grid(
-            row=3, column=1, sticky="ew", pady=4
+            row=4, column=1, sticky="ew", pady=4
         )
         ttk.Checkbutton(
             transcription,
             text="Advertir cuando la calidad estimada sea baja",
             variable=self.transcription_quality_warning_var,
-        ).grid(row=4, column=0, columnspan=2, sticky="w", pady=4)
+        ).grid(row=5, column=0, columnspan=2, sticky="w", pady=4)
         self._load_provider_fields()
 
     def _build_data_documents(self, frame: ttk.Frame) -> None:
@@ -959,6 +968,7 @@ class PreferencesDialog(tk.Toplevel):
                 "adaptive_timeout_max_seconds": int(self.timeout_max_minutes_var.get()) * 60,
                 "whisper_model": self.whisper_model_var.get(),
                 "transcription_language": self.transcription_language_var.get().strip() or "es",
+                "whisper_cpu_threads": int(self.whisper_cpu_threads_var.get()),
                 "diarization_enabled": bool(self.diarization_enabled_var.get()),
                 "diarization_worker_path": self.diarization_worker_var.get().strip(),
                 "transcription_quality_warning": bool(self.transcription_quality_warning_var.get()),
@@ -1062,6 +1072,7 @@ class PreferencesDialog(tk.Toplevel):
         self.timeout_max_minutes_var.set(120)
         self.whisper_model_var.set("base")
         self.transcription_language_var.set("es")
+        self.whisper_cpu_threads_var.set(0)
         self.diarization_enabled_var.set(False)
         self.diarization_worker_var.set("")
         self.transcription_quality_warning_var.set(True)

@@ -38,7 +38,7 @@ if (-not $Iscc) { throw 'No se encontró Inno Setup 6 o 7.' }
 & $Iscc (Join-Path $Root 'installer\MinutasASH_Whisper.iss')
 if ($LASTEXITCODE -ne 0) { throw 'No fue posible crear el instalador Whisper.' }
 
-$Setup = Join-Path $Root 'dist_installer\MinutasASH_Whisper_CPU_2.3.6.exe'
+$Setup = Join-Path $Root 'dist_installer\MinutasASH_Whisper_CPU_2.3.7.exe'
 $Hash = (Get-FileHash -LiteralPath $Setup -Algorithm SHA256).Hash.ToLowerInvariant()
 "$Hash  $(Split-Path -Leaf $Setup)" | Set-Content -Encoding ascii "$Setup.sha256"
 Write-Host "Complemento generado: $Setup"

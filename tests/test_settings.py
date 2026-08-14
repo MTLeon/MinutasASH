@@ -14,8 +14,8 @@ from src.settings import AppSettings, load_settings
 class SettingsTests(unittest.TestCase):
     def test_defaults_are_valid(self):
         settings = AppSettings()
-        self.assertEqual(settings.app_version, "2.3.6")
-        self.assertEqual(settings.release_sequence, 2003005)
+        self.assertEqual(settings.app_version, "2.3.7")
+        self.assertEqual(settings.release_sequence, 2003006)
         self.assertEqual(settings.schema_version, 6)
         self.assertEqual(settings.runtime_mode, "auto")
         self.assertTrue(settings.managed_runtime_url.startswith("https://"))
@@ -63,9 +63,9 @@ class SettingsTests(unittest.TestCase):
                 patch("src.settings.resource_path", return_value=root / "config.json"),
             ):
                 settings = load_settings()
-        self.assertEqual(settings.app_version, "2.3.6")
+        self.assertEqual(settings.app_version, "2.3.7")
         self.assertEqual(settings.schema_version, 6)
-        self.assertEqual(settings.release_sequence, 2003005)
+        self.assertEqual(settings.release_sequence, 2003006)
         self.assertEqual(settings.appearance_theme, "dark")
 
 

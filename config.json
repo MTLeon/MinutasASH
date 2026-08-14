@@ -1,5 +1,5 @@
 {
-    "app_version":  "2.3.6",
+    "app_version":  "2.3.7",
     "schema_version":  6,
     "ollama_base_url":  "http://127.0.0.1:11434",
     "model":  "qwen3:8b",
@@ -62,7 +62,7 @@
     "semantic_guard_min_coverage":  0.8,
     "semantic_guard_fallback_min_confidence":  0.82,
     "semantic_guard_max_candidates":  500,
-    "release_sequence":  2003005,
+    "release_sequence":  2003006,
     "product_generation":  2,
     "legacy_predecessor":  "2.3.2",
     "guided_mode":  true,
@@ -135,6 +135,7 @@
     "automation_auto_generate_document":  false,
     "whisper_model":  "base",
     "transcription_language":  "es",
+    "whisper_cpu_threads":  0,
     "diarization_enabled":  false,
     "diarization_worker_path":  "",
     "transcription_quality_warning":  true,

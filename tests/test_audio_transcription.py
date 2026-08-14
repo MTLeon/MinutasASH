@@ -171,6 +171,9 @@ class AudioTranscriptionTests(unittest.TestCase):
         self.assertEqual(target.name, "reunion_transcripcion.txt")
         self.assertIn("[00:00:00] Hablante no identificado: Hola equipo", content)
         run.assert_called_once()
+        command = run.call_args.args[0]
+        self.assertIn("--cpu-threads", command)
+        self.assertEqual(command[command.index("--cpu-threads") + 1], "0")
 
     @patch("src.audio_transcription.subprocess.run")
     @patch("src.audio_transcription.worker_path")
