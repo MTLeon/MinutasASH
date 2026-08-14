@@ -37,6 +37,7 @@ from src.administration import open_administration
 from src.audio_transcription import (
     SUPPORTED_MEDIA_SUFFIXES,
     load_transcription_report,
+    prepare_audio_copy,
     transcribe_media,
 )
 from src.backup_service import maybe_create_automatic_backup
@@ -65,6 +66,7 @@ from src.legacy_gui import (
 from src.legacy_gui import (
     MinutasApp as LegacyMinutasApp,
 )
+from src.media_preparation_dialog import MediaPreparationDialog
 from src.meeting_automation import (
     InboxAutomationStore,
     apply_exception_review,
@@ -1758,15 +1760,39 @@ Ctrl+Z  Deshacer""",
             return self._accept_source_path(path)
         if self.busy:
             return False
+        dialog = MediaPreparationDialog(self, path)
+        self.wait_window(dialog)
+        if dialog.result is None:
+            return False
+        preparation = dialog.result
         self._set_busy(True)
         self.progress_var.set(5)
-        self.progress_text_var.set("Transcribiendo audio o video...")
+        self.progress_text_var.set(
+            "Preparando audio para transcripción..."
+            if preparation.optimize
+            else "Transcribiendo audio o video..."
+        )
         self._log(f"Transcripción multimedia iniciada: {path}")
 
         def worker() -> None:
             try:
+                source_path = path
+                if preparation.optimize:
+                    prepared = prepare_audio_copy(
+                        path,
+                        output_format=preparation.output_format,
+                        delete_source=preparation.delete_source,
+                    )
+                    source_path = prepared.output_path
+                    self.worker_queue.put(
+                        (
+                            "log",
+                            "Audio preparado: "
+                            f"{prepared.output_path.name} ({prepared.output_bytes / 1024 / 1024:.1f} MB).",
+                        )
+                    )
                 destination = transcribe_media(
-                    path,
+                    source_path,
                     model_name=str(self.config_data.get("whisper_model", "base")),
                     language=str(self.config_data.get("transcription_language", "es")),
                     diarization_enabled=bool(self.config_data.get("diarization_enabled", False)),

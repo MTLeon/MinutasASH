@@ -5,18 +5,40 @@ from __future__ import annotations
 import argparse
 import json
 import subprocess
+import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, cast
 
 from src.diarization import diarize_segments
-from src.transcription_components import ModelName, local_engine_available, transcribe, worker_path
+from src.transcription_components import (
+    ModelName,
+    find_ffmpeg,
+    local_engine_available,
+    transcribe,
+    worker_path,
+)
 
 SUPPORTED_MEDIA_SUFFIXES = {".mp3", ".wav", ".m4a", ".flac", ".ogg", ".mp4", ".mkv", ".webm"}
 
 
 class AudioTranscriptionUnavailable(RuntimeError):
     pass
+
+
+class AudioPreparationUnavailable(RuntimeError):
+    """No fue posible crear una copia de audio apta para transcripcion."""
+
+
+@dataclass(frozen=True)
+class AudioPreparationResult:
+    """Resultado verificable de una preparacion multimedia local."""
+
+    source_path: Path
+    output_path: Path
+    source_bytes: int
+    output_bytes: int
+    source_deleted: bool
 
 
 @dataclass(frozen=True)
@@ -113,6 +135,98 @@ def normalize_whisper_result(result: dict[str, Any]) -> str:
     if not lines:
         raise ValueError("El audio no contiene voz reconocible.")
     return "\n".join(lines) + "\n"
+
+
+def prepare_audio_copy(
+    source: str | Path,
+    *,
+    output_format: str = "m4a",
+    delete_source: bool = False,
+    ffmpeg_path: str | Path | None = None,
+) -> AudioPreparationResult:
+    """Extract the first audio track as mono 16 kHz voice audio.
+
+    Source deletion is opt-in and takes place only after a non-empty copy has
+    been verified. Existing files are never overwritten.
+    """
+    source_path = Path(source).expanduser().resolve()
+    if not source_path.is_file():
+        raise FileNotFoundError(f"No existe el archivo de audio o video: {source_path}")
+    if source_path.suffix.casefold() not in SUPPORTED_MEDIA_SUFFIXES:
+        allowed = ", ".join(sorted(SUPPORTED_MEDIA_SUFFIXES))
+        raise ValueError(f"Formato multimedia no admitido. Use: {allowed}")
+    selected_format = output_format.casefold().lstrip(".")
+    if selected_format not in {"m4a", "mp3"}:
+        raise ValueError("El formato de la copia debe ser M4A o MP3.")
+
+    executable = (
+        Path(ffmpeg_path) if ffmpeg_path else find_ffmpeg(Path(sys.executable).resolve().parent)
+    )
+    if executable is None or not executable.is_file():
+        raise AudioPreparationUnavailable(
+            "No se encontro FFmpeg para preparar el audio. Instale o repare el complemento "
+            "de transcripcion, o configure MINUTAS_ASH_FFMPEG."
+        )
+
+    output_path = source_path.with_name(f"{source_path.stem}_voz_16khz.{selected_format}")
+    if output_path.exists():
+        index = 2
+        while output_path.exists():
+            output_path = source_path.with_name(
+                f"{source_path.stem}_voz_16khz_{index}.{selected_format}"
+            )
+            index += 1
+    codec_args = ["-c:a", "aac", "-b:a", "48k"]
+    if selected_format == "mp3":
+        codec_args = ["-c:a", "libmp3lame", "-b:a", "48k"]
+    completed = subprocess.run(
+        [
+            str(executable),
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-nostdin",
+            "-i",
+            str(source_path),
+            "-map",
+            "0:a:0",
+            "-vn",
+            "-ac",
+            "1",
+            "-ar",
+            "16000",
+            *codec_args,
+            str(output_path),
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=14400,
+        check=False,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    if completed.returncode:
+        detail = completed.stderr.strip() or "FFmpeg no pudo crear la copia de audio."
+        raise AudioPreparationUnavailable(detail)
+    if not output_path.is_file() or output_path.stat().st_size == 0:
+        raise AudioPreparationUnavailable(
+            "FFmpeg termino sin crear una copia de audio verificable."
+        )
+
+    source_bytes = source_path.stat().st_size
+    output_bytes = output_path.stat().st_size
+    source_deleted = False
+    if delete_source:
+        source_path.unlink()
+        source_deleted = True
+    return AudioPreparationResult(
+        source_path=source_path,
+        output_path=output_path,
+        source_bytes=source_bytes,
+        output_bytes=output_bytes,
+        source_deleted=source_deleted,
+    )
 
 
 def transcribe_media(

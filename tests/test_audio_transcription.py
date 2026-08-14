@@ -7,13 +7,68 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from src.audio_transcription import (
+    AudioPreparationUnavailable,
     AudioTranscriptionUnavailable,
     normalize_whisper_result,
+    prepare_audio_copy,
     transcribe_media,
 )
 
 
 class AudioTranscriptionTests(unittest.TestCase):
+    @patch("src.audio_transcription.subprocess.run")
+    def test_prepares_mono_16khz_copy_without_deleting_source(self, run: Mock):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "reunion.mp4"
+            source.write_bytes(b"video")
+            ffmpeg = root / "ffmpeg.exe"
+            ffmpeg.write_bytes(b"tool")
+
+            def create_copy(command, **_kwargs):
+                Path(command[-1]).write_bytes(b"audio-copy")
+                return Mock(returncode=0, stderr="")
+
+            run.side_effect = create_copy
+            result = prepare_audio_copy(source, ffmpeg_path=ffmpeg)
+
+            command = run.call_args.args[0]
+            self.assertIn("-ac", command)
+            self.assertEqual(command[command.index("-ac") + 1], "1")
+            self.assertEqual(command[command.index("-ar") + 1], "16000")
+            self.assertTrue(source.exists())
+            self.assertTrue(result.output_path.is_file())
+            self.assertFalse(result.source_deleted)
+
+    @patch("src.audio_transcription.subprocess.run")
+    def test_deletes_source_only_after_a_verified_copy(self, run: Mock):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "reunion.ogg"
+            source.write_bytes(b"source")
+            ffmpeg = root / "ffmpeg.exe"
+            ffmpeg.write_bytes(b"tool")
+
+            def create_copy(command, **_kwargs):
+                Path(command[-1]).write_bytes(b"converted")
+                return Mock(returncode=0, stderr="")
+
+            run.side_effect = create_copy
+            result = prepare_audio_copy(
+                source, output_format="mp3", delete_source=True, ffmpeg_path=ffmpeg
+            )
+
+            self.assertTrue(result.source_deleted)
+            self.assertFalse(source.exists())
+            self.assertEqual(result.output_path.suffix, ".mp3")
+
+    def test_prepare_reports_missing_ffmpeg(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "reunion.ogg"
+            source.write_bytes(b"source")
+            with self.assertRaises(AudioPreparationUnavailable):
+                prepare_audio_copy(source, ffmpeg_path=Path(tmp) / "missing.exe")
+
     def test_normalizes_segments_as_importable_text(self):
         content = normalize_whisper_result(
             {
