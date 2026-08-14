@@ -14,12 +14,12 @@ VSVersionInfo(
       StringTable('040904B0', [
         StringStruct('CompanyName', 'ASH Ingeniería y Proyectos'),
         StringStruct('FileDescription', 'Gestor de Minutas ASH'),
-        StringStruct('FileVersion', '2.3.5'),
+        StringStruct('FileVersion', '2.3.6'),
         StringStruct('InternalName', 'MinutasASH'),
         StringStruct('LegalCopyright', 'ASH Ingeniería y Proyectos'),
         StringStruct('OriginalFilename', 'MinutasASH.exe'),
         StringStruct('ProductName', 'Minutas ASH'),
-        StringStruct('ProductVersion', '2.3.5')
+        StringStruct('ProductVersion', '2.3.6')
       ])
     ]),
     VarFileInfo([VarStruct('Translation', [1033, 1200])])

@@ -14,14 +14,56 @@ def emit_json(payload: dict[str, Any]) -> None:
     sys.stdout.buffer.write(data + b"\n")
 
 
+def prepare_audio(source: Path, output: Path) -> None:
+    """Write mono 16 kHz audio using PyAV bundled with faster-whisper."""
+    import av  # type: ignore[import-not-found]
+
+    codec = "aac" if output.suffix.casefold() == ".m4a" else "libmp3lame"
+    input_container = av.open(str(source))
+    output_container = av.open(str(output), mode="w")
+    try:
+        audio_stream = next(
+            (stream for stream in input_container.streams if stream.type == "audio"), None
+        )
+        if audio_stream is None:
+            raise ValueError("La fuente no contiene una pista de audio.")
+        output_stream = output_container.add_stream(codec, rate=16000)
+        output_stream.layout = "mono"
+        resampler = av.audio.resampler.AudioResampler(format="fltp", layout="mono", rate=16000)
+        for packet in input_container.demux(audio_stream):
+            for frame in packet.decode():
+                converted = resampler.resample(frame)
+                frames = converted if isinstance(converted, list) else [converted]
+                for resampled in frames:
+                    for encoded in output_stream.encode(resampled):
+                        output_container.mux(encoded)
+        for encoded in output_stream.encode(None):
+            output_container.mux(encoded)
+    finally:
+        output_container.close()
+        input_container.close()
+
+
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Motor de transcripción de Minutas ASH")
+    parser = argparse.ArgumentParser(description="Motor de transcripcion de Minutas ASH")
     parser.add_argument("--source")
+    parser.add_argument("--output")
+    parser.add_argument("--prepare-audio", action="store_true")
     parser.add_argument("--download-only", action="store_true")
     parser.add_argument("--model", choices=("base", "small"), default="base")
     parser.add_argument("--language", default="es")
     args = parser.parse_args()
     try:
+        if args.prepare_audio:
+            if not args.source or not args.output:
+                parser.error("--prepare-audio requiere --source y --output")
+            target = Path(args.output).expanduser().resolve()
+            target.parent.mkdir(parents=True, exist_ok=True)
+            prepare_audio(Path(args.source), target)
+            if not target.is_file() or target.stat().st_size == 0:
+                raise RuntimeError("No se genero una copia de audio verificable.")
+            emit_json({"prepared_audio": str(target)})
+            return 0
         if args.download_only:
             from faster_whisper import WhisperModel  # type: ignore[import-not-found]
 

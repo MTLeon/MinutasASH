@@ -137,65 +137,15 @@ def normalize_whisper_result(result: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def prepare_audio_copy(
-    source: str | Path,
-    *,
-    output_format: str = "m4a",
-    delete_source: bool = False,
-    ffmpeg_path: str | Path | None = None,
-) -> AudioPreparationResult:
-    """Extract the first audio track as mono 16 kHz voice audio.
-
-    Source deletion is opt-in and takes place only after a non-empty copy has
-    been verified. Existing files are never overwritten.
-    """
-    source_path = Path(source).expanduser().resolve()
-    if not source_path.is_file():
-        raise FileNotFoundError(f"No existe el archivo de audio o video: {source_path}")
-    if source_path.suffix.casefold() not in SUPPORTED_MEDIA_SUFFIXES:
-        allowed = ", ".join(sorted(SUPPORTED_MEDIA_SUFFIXES))
-        raise ValueError(f"Formato multimedia no admitido. Use: {allowed}")
-    selected_format = output_format.casefold().lstrip(".")
-    if selected_format not in {"m4a", "mp3"}:
-        raise ValueError("El formato de la copia debe ser M4A o MP3.")
-
-    executable = (
-        Path(ffmpeg_path) if ffmpeg_path else find_ffmpeg(Path(sys.executable).resolve().parent)
-    )
-    if executable is None or not executable.is_file():
-        raise AudioPreparationUnavailable(
-            "No se encontro FFmpeg para preparar el audio. Instale o repare el complemento "
-            "de transcripcion, o configure MINUTAS_ASH_FFMPEG."
-        )
-
-    output_path = source_path.with_name(f"{source_path.stem}_voz_16khz.{selected_format}")
-    if output_path.exists():
-        index = 2
-        while output_path.exists():
-            output_path = source_path.with_name(
-                f"{source_path.stem}_voz_16khz_{index}.{selected_format}"
-            )
-            index += 1
-    codec_args = ["-c:a", "aac", "-b:a", "48k"]
-    if selected_format == "mp3":
-        codec_args = ["-c:a", "libmp3lame", "-b:a", "48k"]
+def _prepare_with_worker(worker: Path, source_path: Path, output_path: Path) -> None:
+    """Use the optional Whisper worker when no external FFmpeg is available."""
     completed = subprocess.run(
         [
-            str(executable),
-            "-hide_banner",
-            "-loglevel",
-            "error",
-            "-nostdin",
-            "-i",
+            str(worker),
+            "--prepare-audio",
+            "--source",
             str(source_path),
-            "-map",
-            "0:a:0",
-            "-vn",
-            "-ac",
-            "1",
-            "-ar",
-            "16000",
-            *codec_args,
+            "--output",
             str(output_path),
         ],
         capture_output=True,
@@ -207,11 +157,99 @@ def prepare_audio_copy(
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
     if completed.returncode:
-        detail = completed.stderr.strip() or "FFmpeg no pudo crear la copia de audio."
+        detail = completed.stderr.strip() or "El complemento Whisper no pudo preparar el audio."
         raise AudioPreparationUnavailable(detail)
+
+
+def prepare_audio_copy(
+    source: str | Path,
+    *,
+    output_format: str = "m4a",
+    delete_source: bool = False,
+    ffmpeg_path: str | Path | None = None,
+) -> AudioPreparationResult:
+    """Extract the first audio track as mono 16 kHz voice audio.
+
+    FFmpeg is preferred for speed. When it is unavailable, the installed
+    Whisper worker performs the same operation using its bundled media stack.
+    Source deletion is opt-in and occurs only after a non-empty copy exists.
+    """
+    source_path = Path(source).expanduser().resolve()
+    if not source_path.is_file():
+        raise FileNotFoundError(f"No existe el archivo de audio o video: {source_path}")
+    if source_path.suffix.casefold() not in SUPPORTED_MEDIA_SUFFIXES:
+        allowed = ", ".join(sorted(SUPPORTED_MEDIA_SUFFIXES))
+        raise ValueError(f"Formato multimedia no admitido. Use: {allowed}")
+    selected_format = output_format.casefold().lstrip(".")
+    if selected_format not in {"m4a", "mp3"}:
+        raise ValueError("El formato de la copia debe ser M4A o MP3.")
+
+    output_path = source_path.with_name(f"{source_path.stem}_voz_16khz.{selected_format}")
+    if output_path.exists():
+        index = 2
+        while output_path.exists():
+            output_path = source_path.with_name(
+                f"{source_path.stem}_voz_16khz_{index}.{selected_format}"
+            )
+            index += 1
+
+    executable = (
+        Path(ffmpeg_path) if ffmpeg_path else find_ffmpeg(Path(sys.executable).resolve().parent)
+    )
+    try:
+        if executable is not None and executable.is_file():
+            codec_args = ["-c:a", "aac", "-b:a", "48k"]
+            if selected_format == "mp3":
+                codec_args = ["-c:a", "libmp3lame", "-b:a", "48k"]
+            completed = subprocess.run(
+                [
+                    str(executable),
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-nostdin",
+                    "-i",
+                    str(source_path),
+                    "-map",
+                    "0:a:0",
+                    "-vn",
+                    "-ac",
+                    "1",
+                    "-ar",
+                    "16000",
+                    *codec_args,
+                    str(output_path),
+                ],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=14400,
+                check=False,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+            if completed.returncode:
+                detail = completed.stderr.strip() or "FFmpeg no pudo crear la copia de audio."
+                raise AudioPreparationUnavailable(detail)
+        else:
+            worker = worker_path()
+            if not worker.is_file():
+                raise AudioPreparationUnavailable(
+                    "No se encontro FFmpeg ni el complemento Whisper. Instale o repare "
+                    "el complemento de transcripcion, o configure MINUTAS_ASH_FFMPEG."
+                )
+            _prepare_with_worker(worker, source_path, output_path)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        output_path.unlink(missing_ok=True)
+        raise AudioPreparationUnavailable(f"No fue posible preparar el audio: {exc}") from exc
+    except AudioPreparationUnavailable:
+        output_path.unlink(missing_ok=True)
+        raise
+
     if not output_path.is_file() or output_path.stat().st_size == 0:
+        output_path.unlink(missing_ok=True)
         raise AudioPreparationUnavailable(
-            "FFmpeg termino sin crear una copia de audio verificable."
+            "La preparacion termino sin crear una copia de audio verificable."
         )
 
     source_bytes = source_path.stat().st_size

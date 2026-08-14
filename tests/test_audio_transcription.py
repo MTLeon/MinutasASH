@@ -62,6 +62,55 @@ class AudioTranscriptionTests(unittest.TestCase):
             self.assertFalse(source.exists())
             self.assertEqual(result.output_path.suffix, ".mp3")
 
+    @patch("src.audio_transcription.subprocess.run")
+    @patch("src.audio_transcription.worker_path")
+    @patch("src.audio_transcription.find_ffmpeg", return_value=None)
+    def test_uses_whisper_worker_when_ffmpeg_is_unavailable(
+        self, _find_ffmpeg: Mock, worker_path: Mock, run: Mock
+    ):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "reunion.ogg"
+            source.write_bytes(b"source")
+            worker = root / "WhisperWorker.exe"
+            worker.write_bytes(b"worker")
+            worker_path.return_value = worker
+
+            def create_copy(command, **_kwargs):
+                Path(command[-1]).write_bytes(b"prepared")
+                return Mock(returncode=0, stderr="")
+
+            run.side_effect = create_copy
+            result = prepare_audio_copy(source)
+
+            command = run.call_args.args[0]
+            self.assertIn("--prepare-audio", command)
+            self.assertEqual(result.output_path.suffix, ".m4a")
+            self.assertTrue(source.exists())
+
+    @patch("src.audio_transcription.subprocess.run")
+    @patch("src.audio_transcription.worker_path")
+    @patch("src.audio_transcription.find_ffmpeg", return_value=None)
+    def test_worker_failure_removes_partial_copy(
+        self, _find_ffmpeg: Mock, worker_path: Mock, run: Mock
+    ):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "reunion.ogg"
+            source.write_bytes(b"source")
+            worker = root / "WhisperWorker.exe"
+            worker.write_bytes(b"worker")
+            worker_path.return_value = worker
+
+            def create_partial(command, **_kwargs):
+                Path(command[-1]).write_bytes(b"partial")
+                return Mock(returncode=1, stderr="fallo de conversion")
+
+            run.side_effect = create_partial
+            with self.assertRaisesRegex(AudioPreparationUnavailable, "fallo de conversion"):
+                prepare_audio_copy(source)
+            self.assertFalse((root / "reunion_voz_16khz.m4a").exists())
+
     def test_prepare_reports_missing_ffmpeg(self):
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / "reunion.ogg"

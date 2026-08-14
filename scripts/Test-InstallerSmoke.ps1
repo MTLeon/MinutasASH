@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
-    [string]$MainInstaller = 'dist_installer\MinutasASH_Setup_2.3.5_Online.exe',
-    [string]$WhisperInstaller = 'dist_installer\MinutasASH_Whisper_CPU_2.3.5.exe',
+    [string]$MainInstaller = 'dist_installer\MinutasASH_Setup_2.3.6_Online.exe',
+    [string]$WhisperInstaller = 'dist_installer\MinutasASH_Whisper_CPU_2.3.6.exe',
     [ValidateRange(2, 60)][int]$StableSeconds = 6,
     [string]$OutputRoot = '.runtime\installer-smoke'
 )

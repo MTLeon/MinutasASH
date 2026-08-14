@@ -16,6 +16,13 @@ class WhisperInstallerTests(unittest.TestCase):
         self.assertIn("--download-only --model base", script)
         self.assertIn("whisper-package", script)
 
+    def test_worker_bundle_includes_media_stack_for_audio_preparation(self) -> None:
+        spec = Path("WhisperWorker.spec").read_text(encoding="utf-8")
+        worker = Path("src/whisper_worker.py").read_text(encoding="utf-8")
+        self.assertIn('collect_all("av")', spec)
+        self.assertIn("--prepare-audio", worker)
+        self.assertIn("AudioResampler", worker)
+
     def test_base_pyinstaller_does_not_bundle_whisper_engine(self) -> None:
         spec = Path("MinutasASH.spec").read_text(encoding="utf-8")
         self.assertNotIn('collect_all("faster_whisper")', spec)

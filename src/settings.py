@@ -20,7 +20,7 @@ class AppSettings(BaseModel):
 
     model_config = ConfigDict(extra="ignore", str_strip_whitespace=True)
 
-    app_version: str = "2.3.5"
+    app_version: str = "2.3.6"
     release_sequence: int = Field(default=2003005, ge=1)
     product_generation: int = Field(default=2, ge=1)
     legacy_predecessor: str = "2.3.2"

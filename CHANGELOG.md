@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.3.6] - 2026-08-14
+
+- Preparación opcional de audio: M4A o MP3, mono y 16 kHz antes de transcribir.
+- Respaldo del complemento Whisper con PyAV cuando FFmpeg externo no está disponible.
+- Limpieza segura de copias parciales y eliminación explícita de la fuente solo tras verificar el resultado.
 ## [2.3.5] - 2026-08-13
 
 - Actualizador compatible con instaladores de GitHub distribuidos en varias partes.
