@@ -7,7 +7,7 @@ Este registro contiene deuda observada que no debe corregirse mediante cambios m
 | DT-001 | Crítica | Trazabilidad | El repositorio Git está disponible y permite auditar el árbol de trabajo. | Mantener historia y revisión de cambios antes de cada release. | Cerrada |
 | DT-002 | Alta | Entorno | `.venv` no contiene herramientas ni todas las dependencias declaradas. | Reconstruir con `scripts/Bootstrap-Dev.ps1` y validar imports. | Cerrada |
 | DT-003 | Alta | Calidad | No existe una puerta local única equivalente a CI. | Adoptar `scripts/Quality.ps1` como comando oficial. | Cerrada |
-| DT-004 | Alta | Arquitectura | `gui.py`, `legacy_gui.py` y `database.py` superan ampliamente 500 líneas. | Extraer casos de uso y repositorios de manera incremental. | Pendiente |
+| DT-004 | Alta | Arquitectura | `gui.py`, `legacy_gui.py` y `database.py` superan ampliamente 500 líneas. | Extraer casos de uso y repositorios de manera incremental. Primer corte: transcripción multimedia extraída a un servicio tipado y probado. | En progreso |
 | DT-005 | Alta | Errores | Auditoría completada: los fallos de persistencia y metadatos se registran; las tres tolerancias restantes son telemetría opcional y están justificadas en código. | Mantener la revisión al añadir nuevos observadores o flujos de fondo. | Cerrada |
 | DT-006 | Media | Cobertura | La suite supera 72 % de cobertura y la puerta mínima ya exige 70 %. | Mantener la puerta en 70 % y planificar el avance a 80 % con cobertura focalizada de módulos críticos. | Cerrada |
 | DT-007 | Media | Estructura | El paquete raíz se denomina `src` y mezcla capas. | Migrar gradualmente a `src/minutas_ash` con adaptadores temporales. | Pendiente |

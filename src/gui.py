@@ -34,12 +34,7 @@ if __package__ in (None, ""):
 import contextlib
 
 from src.administration import open_administration
-from src.audio_transcription import (
-    SUPPORTED_MEDIA_SUFFIXES,
-    load_transcription_report,
-    prepare_audio_copy,
-    transcribe_media,
-)
+from src.audio_transcription import SUPPORTED_MEDIA_SUFFIXES, load_transcription_report
 from src.backup_service import maybe_create_automatic_backup
 from src.database import AppDatabase
 from src.document_numbering import suggest_minute_number
@@ -67,6 +62,7 @@ from src.legacy_gui import (
     MinutasApp as LegacyMinutasApp,
 )
 from src.media_preparation_dialog import MediaPreparationDialog
+from src.media_transcription_service import MediaTranscriptionRequest, transcribe_meeting_media
 from src.meeting_automation import (
     InboxAutomationStore,
     apply_exception_review,
@@ -1776,14 +1772,24 @@ Ctrl+Z  Deshacer""",
 
         def worker() -> None:
             try:
-                source_path = path
-                if preparation.optimize:
-                    prepared = prepare_audio_copy(
-                        path,
+                result = transcribe_meeting_media(
+                    MediaTranscriptionRequest(
+                        source_path=path,
+                        optimize_audio=preparation.optimize,
                         output_format=preparation.output_format,
                         delete_source=preparation.delete_source,
+                        model_name=str(self.config_data.get("whisper_model", "base")),
+                        language=str(self.config_data.get("transcription_language", "es")),
+                        cpu_threads=int(self.config_data.get("whisper_cpu_threads", 0)),
+                        diarization_enabled=bool(
+                            self.config_data.get("diarization_enabled", False)
+                        ),
+                        diarization_worker=str(self.config_data.get("diarization_worker_path", ""))
+                        or None,
                     )
-                    source_path = prepared.output_path
+                )
+                if result.preparation is not None:
+                    prepared = result.preparation
                     self.worker_queue.put(
                         (
                             "log",
@@ -1791,16 +1797,7 @@ Ctrl+Z  Deshacer""",
                             f"{prepared.output_path.name} ({prepared.output_bytes / 1024 / 1024:.1f} MB).",
                         )
                     )
-                destination = transcribe_media(
-                    source_path,
-                    model_name=str(self.config_data.get("whisper_model", "base")),
-                    language=str(self.config_data.get("transcription_language", "es")),
-                    cpu_threads=int(self.config_data.get("whisper_cpu_threads", 0)),
-                    diarization_enabled=bool(self.config_data.get("diarization_enabled", False)),
-                    diarization_worker=str(self.config_data.get("diarization_worker_path", ""))
-                    or None,
-                )
-                self.worker_queue.put(("media_transcribed", destination))
+                self.worker_queue.put(("media_transcribed", result.transcript_path))
             except Exception as exc:
                 self.worker_queue.put(("error", exc))
 
