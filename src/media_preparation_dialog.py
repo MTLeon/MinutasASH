@@ -18,9 +18,18 @@ class MediaPreparationChoice:
 class MediaPreparationDialog(tk.Toplevel):
     """Solicita la decision antes de tocar el archivo de origen."""
 
-    def __init__(self, parent: tk.Tk, source_path: Path) -> None:
+    def __init__(
+        self,
+        parent: tk.Tk,
+        source_path: Path,
+        *,
+        preflight_summary: str = "",
+        preflight_warnings: tuple[str, ...] = (),
+    ) -> None:
         super().__init__(parent)
         self.source_path = source_path
+        self.preflight_summary = preflight_summary
+        self.preflight_warnings = preflight_warnings
         self.result: MediaPreparationChoice | None = None
         self.title("Preparar audio para transcripcion")
         self.transient(parent)
@@ -45,27 +54,46 @@ class MediaPreparationDialog(tk.Toplevel):
             justify="left",
         ).grid(row=1, column=0, columnspan=2, sticky="w", pady=(8, 10))
         ttk.Label(frame, text=f"Fuente: {source_path.name}", style="Muted.TLabel").grid(
-            row=2, column=0, columnspan=2, sticky="w", pady=(0, 12)
+            row=2, column=0, columnspan=2, sticky="w"
         )
+        if preflight_summary:
+            ttk.Label(
+                frame,
+                text=preflight_summary,
+                style="Muted.TLabel",
+                wraplength=560,
+                justify="left",
+            ).grid(row=3, column=0, columnspan=2, sticky="w", pady=(4, 0))
+        if preflight_warnings:
+            ttk.Label(
+                frame,
+                text=" · ".join(preflight_warnings),
+                wraplength=560,
+                justify="left",
+            ).grid(row=4, column=0, columnspan=2, sticky="w", pady=(4, 12))
+        else:
+            ttk.Label(frame, text="", style="Muted.TLabel").grid(
+                row=4, column=0, columnspan=2, sticky="w", pady=(0, 12)
+            )
         ttk.Checkbutton(
             frame,
             text="Crear copia optimizada antes de transcribir",
             variable=self.optimize_var,
             command=self._refresh_state,
-        ).grid(row=3, column=0, columnspan=2, sticky="w")
-        ttk.Label(frame, text="Formato de copia:").grid(row=4, column=0, sticky="w", pady=(10, 0))
+        ).grid(row=5, column=0, columnspan=2, sticky="w")
+        ttk.Label(frame, text="Formato de copia:").grid(row=6, column=0, sticky="w", pady=(10, 0))
         self.format_combo = ttk.Combobox(
             frame, textvariable=self.format_var, values=("M4A", "MP3"), state="readonly", width=12
         )
-        self.format_combo.grid(row=4, column=1, sticky="w", pady=(10, 0))
+        self.format_combo.grid(row=6, column=1, sticky="w", pady=(10, 0))
         self.delete_check = ttk.Checkbutton(
             frame,
             text="Eliminar la fuente original despues de verificar la copia",
             variable=self.delete_source_var,
         )
-        self.delete_check.grid(row=5, column=0, columnspan=2, sticky="w", pady=(8, 14))
+        self.delete_check.grid(row=7, column=0, columnspan=2, sticky="w", pady=(8, 14))
         buttons = ttk.Frame(frame)
-        buttons.grid(row=6, column=0, columnspan=2, sticky="e")
+        buttons.grid(row=8, column=0, columnspan=2, sticky="e")
         ttk.Button(buttons, text="Cancelar", command=self.destroy).pack(side="right")
         ttk.Button(buttons, text="Continuar", command=self._continue).pack(
             side="right", padx=(0, 8)

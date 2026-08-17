@@ -62,7 +62,11 @@ from src.legacy_gui import (
     MinutasApp as LegacyMinutasApp,
 )
 from src.media_preparation_dialog import MediaPreparationDialog
-from src.media_transcription_service import MediaTranscriptionRequest, transcribe_meeting_media
+from src.media_transcription_service import (
+    MediaTranscriptionRequest,
+    preflight_media,
+    transcribe_meeting_media,
+)
 from src.meeting_automation import (
     InboxAutomationStore,
     apply_exception_review,
@@ -1760,7 +1764,21 @@ Ctrl+Z  Deshacer""",
             return self._accept_source_path(path)
         if self.busy:
             return False
-        dialog = MediaPreparationDialog(self, path)
+        try:
+            preflight = preflight_media(
+                path, cpu_threads=int(self.config_data.get("whisper_cpu_threads", 0))
+            )
+            for warning in preflight.warnings:
+                self._log(f"Preflight multimedia: {warning}")
+            dialog = MediaPreparationDialog(
+                self,
+                path,
+                preflight_summary=preflight.summary,
+                preflight_warnings=preflight.warnings,
+            )
+        except (OSError, ValueError) as exc:
+            self._log(f"No se pudo completar el preflight multimedia: {exc}")
+            dialog = MediaPreparationDialog(self, path)
         self.wait_window(dialog)
         if dialog.result is None:
             return False

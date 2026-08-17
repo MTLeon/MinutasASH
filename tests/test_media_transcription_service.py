@@ -4,7 +4,11 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from src.audio_transcription import AudioPreparationResult
-from src.media_transcription_service import MediaTranscriptionRequest, transcribe_meeting_media
+from src.media_transcription_service import (
+    MediaTranscriptionRequest,
+    preflight_media,
+    transcribe_meeting_media,
+)
 
 
 @patch("src.media_transcription_service.transcribe_media")
@@ -61,3 +65,24 @@ def test_transcribes_original_when_preparation_is_disabled(
     transcribe.assert_called_once()
     assert transcribe.call_args.args[0] == source.resolve()
     assert result.preparation is None
+
+
+@patch("src.media_transcription_service.engine_available", return_value=False)
+@patch("src.media_transcription_service.worker_available", return_value=False)
+@patch("src.media_transcription_service.find_ffmpeg", return_value=None)
+@patch("src.media_transcription_service.shutil.disk_usage")
+def test_preflight_reports_space_and_component_warnings(
+    disk_usage: Mock, _ffmpeg: Mock, _worker: Mock, _engine: Mock, tmp_path: Path
+) -> None:
+    source = tmp_path / "reunion.ogg"
+    source.write_bytes(b"audio")
+    disk_usage.return_value = Mock(free=1)
+
+    preflight = preflight_media(source, cpu_threads=2)
+
+    assert not preflight.space_ready
+    assert not preflight.conversion_available
+    assert not preflight.transcription_available
+    assert preflight.effective_cpu_threads == 2
+    assert len(preflight.warnings) == 3
+    assert "Fuente:" in preflight.summary
