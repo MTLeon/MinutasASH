@@ -12,6 +12,17 @@ from src.runtime_paths import jobs_dir
 
 JobStatus = Literal["queued", "running", "completed", "failed", "cancelled", "interrupted"]
 FINAL_STATUSES = {"completed", "failed", "cancelled"}
+RETRYABLE_STATUSES = frozenset({"failed", "cancelled", "interrupted"})
+
+
+def is_retryable_status(status: JobStatus) -> bool:
+    """Indica si un trabajo terminado o interrumpido puede iniciarse de nuevo.
+
+    Un reintento siempre crea una ejecución nueva: el registro anterior se conserva
+    como evidencia y el checkpoint asociado permite recuperar los bloques completos.
+    """
+
+    return status in RETRYABLE_STATUSES
 
 
 def _now() -> str:

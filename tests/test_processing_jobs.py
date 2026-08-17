@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime, timedelta
 
-from src.processing_jobs import ProcessingJobStore
+from src.processing_jobs import ProcessingJobStore, is_retryable_status
 
 
 def test_job_lifecycle_is_persisted(tmp_path) -> None:
@@ -83,3 +83,12 @@ def test_discard_recoverable_only_removes_queued_or_interrupted_jobs(tmp_path) -
     assert store.get(queued.job_id) is None
     assert store.get(interrupted.job_id) is None
     assert store.get(running.job_id) is not None
+
+
+def test_only_finished_or_interrupted_jobs_are_retryable() -> None:
+    assert is_retryable_status("failed")
+    assert is_retryable_status("cancelled")
+    assert is_retryable_status("interrupted")
+    assert not is_retryable_status("queued")
+    assert not is_retryable_status("running")
+    assert not is_retryable_status("completed")

@@ -3804,8 +3804,28 @@ Ctrl+Z  Deshacer""",
         ):
             self._download_pending_update()
 
+    def _retry_processing_source(self, source_path: Path) -> tuple[bool, str]:
+        """Recarga una fuente registrada y delega al flujo normal de análisis.
+
+        El centro no ejecuta trabajo en segundo plano directamente: esta clase valida
+        el formulario, crea un nuevo identificador de proceso y deja que el pipeline
+        decida si el checkpoint existente es compatible.
+        """
+
+        if self.busy:
+            return False, "Espere a que termine o cancele el proceso activo antes de reintentar."
+        if not source_path.is_file():
+            return False, "La fuente original ya no existe o no se puede leer."
+        if not self._accept_input_path(source_path):
+            return False, "No fue posible cargar la fuente seleccionada para el reintento."
+        self.start_analysis()
+        if not self.busy:
+            return False, "Complete los datos requeridos de la reunión y vuelva a intentar."
+        self._log(f"Reintento solicitado desde el centro: {source_path.name}")
+        return True, "Reintento iniciado. El avance compatible se recuperará automáticamente."
+
     def open_processing_center(self) -> None:
-        ProcessingCenterDialog(self, self.config_data)
+        ProcessingCenterDialog(self, self.config_data, on_retry=self._retry_processing_source)
 
     def open_transcription_components(self) -> None:
         def save(payload: dict) -> None:
