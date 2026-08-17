@@ -20,6 +20,14 @@ STATUS_LABELS = {
     "cancelled": "Cancelado",
     "interrupted": "Interrumpido",
 }
+FILTER_LABELS = {
+    "Todos": None,
+    "Activos": {"queued", "running"},
+    "Reintentables": {"failed", "cancelled", "interrupted"},
+    "Con error": {"failed"},
+    "Interrumpidos": {"interrupted"},
+    "Finalizados": {"completed", "cancelled", "failed"},
+}
 
 
 class ProcessingCenterDialog(tk.Toplevel):
@@ -37,7 +45,11 @@ class ProcessingCenterDialog(tk.Toplevel):
         self.on_retry = on_retry
         self.store = ProcessingJobStore()
         self.status_var = tk.StringVar(value="Historial de ejecuciones y estado del proveedor.")
-        self.diagnostic_var = tk.StringVar(value="Diagnostico pendiente")
+        self.diagnostic_var = tk.StringVar(value="Diagnóstico pendiente")
+        self.filter_var = tk.StringVar(value="Todos")
+        self.detail_var = tk.StringVar(
+            value="Seleccione una ejecución para ver su fuente, modelo y acción recomendada."
+        )
         self._build()
         self.refresh()
 
@@ -72,9 +84,22 @@ class ProcessingCenterDialog(tk.Toplevel):
         )
         ttk.Button(heading, text="Cerrar", command=self.destroy).grid(row=0, column=6, padx=(8, 0))
 
-        ttk.Label(root, textvariable=self.diagnostic_var).grid(
-            row=1, column=0, sticky="w", pady=(10, 8)
+        toolbar = ttk.Frame(root)
+        toolbar.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(10, 8))
+        toolbar.columnconfigure(0, weight=1)
+        ttk.Label(toolbar, textvariable=self.diagnostic_var, style="Muted.TLabel").grid(
+            row=0, column=0, sticky="w"
         )
+        ttk.Label(toolbar, text="Mostrar:").grid(row=0, column=1, padx=(12, 4))
+        filter_combo = ttk.Combobox(
+            toolbar,
+            textvariable=self.filter_var,
+            values=tuple(FILTER_LABELS),
+            state="readonly",
+            width=16,
+        )
+        filter_combo.grid(row=0, column=2, sticky="e")
+        filter_combo.bind("<<ComboboxSelected>>", lambda _event: self.refresh())
 
         columns = ("updated", "status", "source", "provider", "progress", "message")
         self.tree = ttk.Treeview(root, columns=columns, show="headings", selectmode="extended")
@@ -103,16 +128,34 @@ class ProcessingCenterDialog(tk.Toplevel):
         scrollbar = ttk.Scrollbar(root, orient="vertical", command=self.tree.yview)
         scrollbar.grid(row=2, column=1, sticky="ns")
         self.tree.configure(yscrollcommand=scrollbar.set)
+        self.tree.tag_configure("running", foreground="#1769aa")
+        self.tree.tag_configure("queued", foreground="#735d00")
+        self.tree.tag_configure("interrupted", foreground="#b66a00")
+        self.tree.tag_configure("failed", foreground="#b42318")
+        self.tree.tag_configure("cancelled", foreground="#6b7280")
+        self.tree.tag_configure("completed", foreground="#147a46")
+        self.tree.bind("<<TreeviewSelect>>", self._show_selected_detail)
         self.tree.bind("<Delete>", lambda _event: self.discard_selected())
         self.tree.bind("<Control-r>", lambda _event: self.retry_selected())
         self.tree.bind("<Control-R>", lambda _event: self.retry_selected())
         self.tree.bind("<F5>", lambda _event: self.refresh())
-        ttk.Label(root, textvariable=self.status_var).grid(row=3, column=0, sticky="w", pady=(8, 0))
+
+        details = ttk.LabelFrame(root, text="Detalle de la ejecución", padding=(10, 7))
+        details.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(10, 0))
+        details.columnconfigure(0, weight=1)
+        ttk.Label(details, textvariable=self.detail_var, justify="left", wraplength=880).grid(
+            row=0, column=0, sticky="ew"
+        )
+        ttk.Label(root, textvariable=self.status_var, style="Muted.TLabel").grid(
+            row=4, column=0, sticky="w", pady=(8, 0)
+        )
 
     def refresh(self) -> None:
         for item_id in self.tree.get_children():
             self.tree.delete(item_id)
-        jobs = self.store.list(limit=100)
+        all_jobs = self.store.list(limit=100)
+        allowed = FILTER_LABELS.get(self.filter_var.get())
+        jobs = [job for job in all_jobs if allowed is None or job.status in allowed]
         for job in jobs:
             updated = job.updated_at.replace("T", " ")[:19]
             self.tree.insert(
@@ -127,12 +170,43 @@ class ProcessingCenterDialog(tk.Toplevel):
                     f"{job.progress} %",
                     job.error or job.message,
                 ),
+                tags=(job.status,),
             )
-        retryable = sum(is_retryable_status(job.status) for job in jobs)
-        discardable = sum(job.status in {"queued", "interrupted"} for job in jobs)
+        retryable = sum(is_retryable_status(job.status) for job in all_jobs)
+        discardable = sum(job.status in {"queued", "interrupted"} for job in all_jobs)
         self.status_var.set(
-            f"{len(jobs)} ejecución(es) reciente(s) · {retryable} reintentable(s) · "
+            f"{len(jobs)} de {len(all_jobs)} ejecución(es) · {retryable} reintentable(s) · "
             f"{discardable} pendiente(s) que puede retirar."
+        )
+        self._show_selected_detail()
+
+    def _show_selected_detail(self, _event=None) -> None:
+        selection = self.tree.selection()
+        if len(selection) != 1:
+            self.detail_var.set(
+                "Seleccione una ejecución para ver su fuente, modelo y acción recomendada."
+            )
+            return
+        job = self.store.get(selection[0])
+        if job is None:
+            self.detail_var.set("La ejecución ya no está disponible; actualice la lista.")
+            return
+        source = Path(job.source_path)
+        source_state = "disponible" if source.is_file() else "no encontrada"
+        action = (
+            "Puede reintentarse y recuperar el checkpoint compatible."
+            if is_retryable_status(job.status) and source.is_file()
+            else (
+                "Puede retirarse de la cola sin borrar su fuente."
+                if job.status in {"queued", "interrupted"}
+                else "No requiere acción; use la limpieza de historial cuando corresponda."
+            )
+        )
+        detail = job.error or job.message or "Sin detalle adicional."
+        self.detail_var.set(
+            f"Fuente: {source.name} ({source_state}) · Proveedor: "
+            f"{provider_display_name(job.provider_id)} · Modelo: {job.model or 'sin especificar'} · "
+            f"Avance: {job.progress} %.\n{detail}\n{action}"
         )
 
     def retry_selected(self) -> None:
