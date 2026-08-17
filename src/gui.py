@@ -96,12 +96,8 @@ from src.review_quality import assess_item, items_for_document, summarize_review
 from src.runtime_paths import cache_dir, inbox_dir, install_root
 from src.settings import load_settings_dict
 from src.source_dialogs import ManualSourceDialog
-from src.teams_graph import (
-    TeamsGraphClient,
-    TeamsGraphError,
-    TeamsGraphImporter,
-    acquire_interactive_token,
-)
+from src.teams_graph import TeamsGraphError
+from src.teams_graph_service import TeamsGraphImportRequest, import_teams_transcripts
 from src.template_service import TemplateService
 from src.transcription_dialog import open_transcription_components
 from src.ui_productivity import (
@@ -1384,17 +1380,18 @@ Ctrl+Z  Deshacer""",
 
         def worker() -> None:
             try:
-                token = acquire_interactive_token(client_id, tenant_id or "organizations")
-                client = TeamsGraphClient(
-                    token,
-                    timeout_seconds=int(self.config_data.get("teams_graph_timeout_seconds", 60)),
+                imported = import_teams_transcripts(
+                    TeamsGraphImportRequest(
+                        client_id=client_id,
+                        tenant_id=tenant_id or "organizations",
+                        join_url=join_url,
+                        inbox_path=inbox_dir(),
+                        state_path=cache_dir() / "teams-graph-state.json",
+                        timeout_seconds=int(
+                            self.config_data.get("teams_graph_timeout_seconds", 60)
+                        ),
+                    )
                 )
-                importer = TeamsGraphImporter(
-                    client,
-                    inbox_dir(),
-                    cache_dir() / "teams-graph-state.json",
-                )
-                imported = importer.import_join_url(join_url)
                 if not imported:
                     raise TeamsGraphError(
                         "La transcripción ya estaba importada; no se creó un duplicado."
