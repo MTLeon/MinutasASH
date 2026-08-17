@@ -707,7 +707,10 @@ Ctrl+Z  Deshacer""",
             return
         try:
             stats = self.db.dashboard_stats()
-        except Exception:
+        except Exception as exc:
+            self._log(
+                f"Panel: no fue posible calcular indicadores rápidos; se usó el recuento compatible ({exc})."
+            )
             rows = self.db.list_meetings(limit=5000)
             stats = {
                 "total": len(rows),
@@ -936,7 +939,11 @@ Ctrl+Z  Deshacer""",
         path = candidates[0].path
         try:
             duplicate = self.db.find_meeting_by_source_sha256(_sha256_file(path))
-        except Exception:
+        except Exception as exc:
+            self._log(
+                "Automatización: no fue posible comprobar el hash contra el historial; "
+                f"se continuará con una revisión manual posterior ({exc})."
+            )
             duplicate = None
         if duplicate:
             self.inbox_automation_store.mark(
