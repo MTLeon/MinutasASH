@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import UTC, datetime, timedelta
 
 from src.processing_jobs import ProcessingJobStore, is_retryable_status
@@ -20,6 +21,19 @@ def test_job_lifecycle_is_persisted(tmp_path) -> None:
         json.loads((tmp_path / f"{job.job_id}.json").read_text(encoding="utf-8"))["status"]
         == "completed"
     )
+
+
+def test_cleanup_removes_only_old_orphaned_temporary_files(tmp_path) -> None:
+    store = ProcessingJobStore(tmp_path)
+    old_temporary = tmp_path / "abandoned.tmp"
+    fresh_temporary = tmp_path / "still-writing.tmp"
+    old_temporary.write_text("partial", encoding="utf-8")
+    fresh_temporary.write_text("partial", encoding="utf-8")
+    os.utime(old_temporary, (1, 1))
+
+    assert store.cleanup_orphaned_temporary_files(min_age_seconds=60) == 1
+    assert not old_temporary.exists()
+    assert fresh_temporary.exists()
 
 
 def test_running_jobs_are_recovered_as_interrupted(tmp_path) -> None:

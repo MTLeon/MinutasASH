@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -51,7 +52,30 @@ class ProcessingJobStore:
         self.root.mkdir(parents=True, exist_ok=True)
         self._lock = RLock()
         if recover_on_open:
+            self.cleanup_orphaned_temporary_files()
             self.recover_interrupted()
+
+    def cleanup_orphaned_temporary_files(self, *, min_age_seconds: int = 300) -> int:
+        """Retira escrituras temporales antiguas dejadas por cierres abruptos.
+
+        Los trabajos válidos usan extensión ``.json`` y se escriben con reemplazo
+        atómico. Un ``.tmp`` viejo no representa una ejecución recuperable; solo
+        se limpia durante la recuperación y después de un margen prudente para no
+        interferir con una escritura activa.
+        """
+
+        cutoff = time.time() - max(0, int(min_age_seconds))
+        removed = 0
+        with self._lock:
+            for path in self.root.glob("*.tmp"):
+                try:
+                    if path.stat().st_mtime > cutoff:
+                        continue
+                    path.unlink()
+                except (FileNotFoundError, OSError):
+                    continue
+                removed += 1
+        return removed
 
     def create(self, source_path: str, provider_id: str, model: str) -> ProcessingJob:
         now = _now()
