@@ -10,12 +10,39 @@ from src.audio_transcription import (
     AudioPreparationUnavailable,
     AudioTranscriptionUnavailable,
     normalize_whisper_result,
+    preparation_required_free_bytes,
     prepare_audio_copy,
     transcribe_media,
 )
 
 
 class AudioTranscriptionTests(unittest.TestCase):
+    def test_preparation_space_reservation_scales_for_large_sources(self):
+        megabyte = 1024 * 1024
+        self.assertEqual(preparation_required_free_bytes(1), 256 * megabyte)
+        self.assertEqual(preparation_required_free_bytes(1536 * megabyte), 768 * megabyte)
+        self.assertEqual(preparation_required_free_bytes(8 * 1024 * megabyte), 1024 * megabyte)
+
+    @patch("src.audio_transcription.subprocess.run")
+    @patch("src.audio_transcription.shutil.disk_usage")
+    def test_preparation_stops_before_conversion_when_disk_is_low(
+        self, disk_usage: Mock, run: Mock
+    ):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "reunion.ogg"
+            source.write_bytes(b"source")
+            ffmpeg = root / "ffmpeg.exe"
+            ffmpeg.write_bytes(b"tool")
+            disk_usage.return_value = Mock(free=1)
+
+            with self.assertRaisesRegex(AudioPreparationUnavailable, "espacio libre suficiente"):
+                prepare_audio_copy(source, ffmpeg_path=ffmpeg)
+
+            run.assert_not_called()
+            self.assertTrue(source.exists())
+            self.assertFalse((root / "reunion_voz_16khz.m4a").exists())
+
     @patch("src.audio_transcription.subprocess.run")
     def test_prepares_mono_16khz_copy_without_deleting_source(self, run: Mock):
         with tempfile.TemporaryDirectory() as tmp:

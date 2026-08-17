@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import subprocess
 import sys
 from dataclasses import asdict, dataclass
@@ -20,6 +21,44 @@ from src.transcription_components import (
 )
 
 SUPPORTED_MEDIA_SUFFIXES = {".mp3", ".wav", ".m4a", ".flac", ".ogg", ".mp4", ".mkv", ".webm"}
+_MIN_PREPARATION_FREE_BYTES = 256 * 1024 * 1024
+_MAX_PREPARATION_HEADROOM_BYTES = 1024 * 1024 * 1024
+
+
+def preparation_required_free_bytes(source_bytes: int) -> int:
+    """Devuelve el margen libre mínimo antes de convertir multimedia.
+
+    La copia mono 16 kHz suele ser mucho menor que un video, pero la duración y
+    compresión del origen no siempre permiten estimarla. Se reserva un mínimo de
+    256 MB y, para archivos grandes, hasta la mitad de su tamaño con un límite de
+    1 GB. Es una protección contra fallos a mitad de conversión, no una cuota de
+    almacenamiento permanente.
+    """
+
+    source_bytes = max(0, int(source_bytes))
+    return max(
+        _MIN_PREPARATION_FREE_BYTES,
+        min(source_bytes // 2, _MAX_PREPARATION_HEADROOM_BYTES),
+    )
+
+
+def _ensure_preparation_space(source_path: Path, output_path: Path) -> None:
+    required = preparation_required_free_bytes(source_path.stat().st_size)
+    try:
+        available = int(shutil.disk_usage(output_path.parent).free)
+    except OSError as exc:
+        raise AudioPreparationUnavailable(
+            f"No fue posible comprobar el espacio libre para preparar el audio: {exc}"
+        ) from exc
+    if available >= required:
+        return
+    required_mb = required / (1024 * 1024)
+    available_mb = available / (1024 * 1024)
+    raise AudioPreparationUnavailable(
+        "No hay espacio libre suficiente para crear una copia de audio segura "
+        f"({available_mb:.0f} MB disponibles; se requieren al menos {required_mb:.0f} MB). "
+        "Libere espacio o elija otra unidad antes de continuar."
+    )
 
 
 class AudioTranscriptionUnavailable(RuntimeError):
@@ -192,6 +231,8 @@ def prepare_audio_copy(
                 f"{source_path.stem}_voz_16khz_{index}.{selected_format}"
             )
             index += 1
+
+    _ensure_preparation_space(source_path, output_path)
 
     executable = (
         Path(ffmpeg_path) if ffmpeg_path else find_ffmpeg(Path(sys.executable).resolve().parent)
