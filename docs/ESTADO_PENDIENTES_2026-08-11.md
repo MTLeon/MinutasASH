@@ -10,7 +10,7 @@ Este documento sustituye como fuente de estado a las listas históricas. Los det
 | Entrada automática | VTT, SRT, TXT, DOCX, PDF, texto/notas, audio y video; carpeta vigilada, hash de procesados, cola recuperable y vista previa. |
 | Transcripción | Whisper CPU opcional, modelos seleccionables, timestamps, indicador de calidad, diccionario y diarización opcional separada. |
 | Extracción | Segmentación, categorías, responsables/fechas, fusión de duplicados, verificación/recuperación de evidencia, rechazo de negaciones y sugerencias no aprobadas, fallback JSON local. |
-| Revisión asistida | Evidencia y tiempo, motivos de confianza, acciones masivas, combinación, autoguardado, deshacer, recuperación, foco y aprobación de alta confianza configurable. Incluye continuidad: compromisos/pedientes aprobados del mismo proyecto se sugieren y solo se incorporan por selección explícita. |
+| Revisión asistida | Evidencia y tiempo, motivos de confianza, acciones masivas, combinación, autoguardado, deshacer, recuperación, foco y aprobación de alta confianza configurable. Incluye continuidad: compromisos/pedientes aprobados del mismo proyecto se sugieren y solo se incorporan por selección explícita. Advierte responsables colectivos/ambiguos, plazos vagos y descripciones genéricas sin bloquear la decisión humana. |
 | Aprendizaje controlado | Original/corrección, recuperación de ejemplos similares, separación por contexto, exclusión, comparación A/B, propuestas de prompt y exportación de dataset LoRA. |
 | Automatización | Bandeja/cola, transcripción, borrador, revisión de excepciones, DOCX/PDF, historial y notificación local. Importación Graph delegada implementada y probada con dobles. |
 | Observabilidad | ID de procesamiento, logs saneados, diagnóstico ZIP, historial de proveedor, cancelación/reintento/conexión, métricas operativas y pruebas de layout. Panel de salud no bloqueante para RAM, disco, proveedor, componentes, respaldos y cola. |
@@ -20,7 +20,7 @@ Este documento sustituye como fuente de estado a las listas históricas. Los det
 
 ## Validación automatizada vigente
 
-- `scripts/Quality.ps1`: compilación, formato, lint, tipos, 250 pruebas y cobertura 71,34 % (puerta mínima: 70 %).
+- `scripts/Quality.ps1`: compilación, formato, lint, tipos, 252 pruebas y cobertura 71,37 % (puerta mínima: 70 %).
 - `scripts/Evaluate-Benchmark.ps1`: banco comparable por proveedor.
 - `scripts/Test-VisualLayouts.ps1`: 75 combinaciones de resolución/escala, sin fallos.
 - `scripts/Test-InstallerSmoke.ps1`: smoke seguro en rutas aisladas del workspace.
