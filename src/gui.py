@@ -2438,6 +2438,11 @@ Ctrl+Z  Deshacer""",
             side="left", padx=(0, 8)
         )
         ttk.Button(
+            bottom,
+            text="Pendientes anteriores",
+            command=self.show_project_continuity_suggestions,
+        ).pack(side="left", padx=(0, 8))
+        ttk.Button(
             bottom, text="Aprobar sugerencias verdes", command=self.approve_green_items
         ).pack(side="left")
         ttk.Button(bottom, text="Ver referencia ampliada", command=self.show_item_reference).pack(
@@ -2963,6 +2968,141 @@ Ctrl+Z  Deshacer""",
         messagebox.showinfo(
             "Revisión", f"Se aprobaron {count} punto(s) completos y de alta calidad.", parent=self
         )
+
+    def show_project_continuity_suggestions(self) -> None:
+        """Muestra puntos previos que el usuario puede adoptar de forma explícita."""
+
+        from src.meeting_continuity import prior_actionable_items
+
+        project_code = self.meta_vars["project_code"].get().strip()
+        if not project_code:
+            messagebox.showinfo(
+                "Pendientes anteriores",
+                "Seleccione o ingrese primero el código de proyecto.",
+                parent=self,
+            )
+            return
+        try:
+            rows = self.db.list_project_continuity_rows(project_code)
+            if self.current_meeting_id:
+                rows = [row for row in rows if int(row.get("id") or 0) != self.current_meeting_id]
+            suggestions = prior_actionable_items(rows, project_code=project_code)
+        except Exception as exc:
+            self._log(f"No fue posible consultar pendientes anteriores: {exc}")
+            messagebox.showerror(
+                "Pendientes anteriores",
+                "No fue posible consultar el historial. Revise el diagnóstico.",
+                parent=self,
+            )
+            return
+        if not suggestions:
+            messagebox.showinfo(
+                "Pendientes anteriores",
+                "No hay compromisos o pendientes aprobados para este proyecto.",
+                parent=self,
+            )
+            return
+
+        window = tk.Toplevel(self)
+        window.title("Pendientes anteriores del proyecto")
+        window.transient(self)
+        configure_resizable_window(window, self, "project_continuity", "980x500", (700, 380))
+        frame = ttk.Frame(window, padding=14)
+        frame.pack(fill="both", expand=True)
+        ttk.Label(
+            frame,
+            text=(
+                "Seleccione los puntos que desea traer. Se agregarán como pendientes para "
+                "revisión; no se emiten automáticamente."
+            ),
+            style="Muted.TLabel",
+            wraplength=900,
+            justify="left",
+        ).pack(anchor="w", pady=(0, 10))
+        columns = ("date", "minute", "category", "description", "responsible", "due")
+        tree = ttk.Treeview(frame, columns=columns, show="headings", selectmode="extended")
+        for key, label, width in (
+            ("date", "Fecha", 95),
+            ("minute", "N.º minuta", 135),
+            ("category", "Categoría", 105),
+            ("description", "Descripción", 390),
+            ("responsible", "Responsable", 150),
+            ("due", "Plazo", 115),
+        ):
+            tree.heading(key, text=label)
+            tree.column(key, width=width, anchor="w")
+        for index, suggestion in enumerate(suggestions):
+            item = suggestion.item
+            tree.insert(
+                "",
+                "end",
+                iid=str(index),
+                values=(
+                    suggestion.meeting_date,
+                    suggestion.minute_number,
+                    item.category.capitalize(),
+                    item.description,
+                    item.responsible or "Sin responsable",
+                    item.due_date_text or item.due_date_iso or "Sin plazo",
+                ),
+            )
+        tree.pack(side="left", fill="both", expand=True)
+        scrollbar = ttk.Scrollbar(frame, orient="vertical", command=tree.yview)
+        scrollbar.pack(side="right", fill="y")
+        tree.configure(yscrollcommand=scrollbar.set)
+        actions = ttk.Frame(window, padding=(14, 0, 14, 14))
+        actions.pack(fill="x")
+
+        def adopt_selection() -> None:
+            selected = [int(value) for value in tree.selection()]
+            if not selected:
+                messagebox.showinfo(
+                    "Pendientes anteriores", "Seleccione al menos un punto.", parent=window
+                )
+                return
+            existing = {" ".join(item.description.casefold().split()) for item in self.items}
+            added = 0
+            for index in selected:
+                source = suggestions[index]
+                key = " ".join(source.item.description.casefold().split())
+                if key in existing:
+                    continue
+                self.items.append(
+                    source.item.model_copy(
+                        update={
+                            "review_status": "pendiente",
+                            "origin": "importado",
+                            "review_notes": (
+                                f"Sugerido desde {source.minute_number or 'minuta anterior'} "
+                                f"del {source.meeting_date or 'historial del proyecto'}."
+                            ),
+                        }
+                    )
+                )
+                existing.add(key)
+                added += 1
+            if added:
+                self._sync_items_to_bundle()
+                self._refresh_items_tree(select_index=len(self.items) - added)
+                self._save_autosave_draft()
+                self.progress_text_var.set(
+                    f"Se agregaron {added} pendiente(s) anterior(es) para revisión manual"
+                )
+            messagebox.showinfo(
+                "Pendientes anteriores",
+                f"Se agregaron {added} punto(s). Los duplicados se omitieron.",
+                parent=window,
+            )
+            window.destroy()
+
+        ttk.Button(actions, text="Cerrar", command=window.destroy).pack(side="right")
+        ttk.Button(
+            actions,
+            text="Agregar seleccionados para revisión",
+            command=adopt_selection,
+            style="Primary.TButton",
+        ).pack(side="right", padx=(0, 8))
+        tree.focus_set()
 
     def add_item(self) -> None:
         dialog = ItemDialog(self)

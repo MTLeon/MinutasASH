@@ -1418,6 +1418,30 @@ class AppDatabase:
             )
             return _inserted_id(cursor)
 
+    def list_project_continuity_rows(self, project_code: str, limit: int = 40) -> list[dict]:
+        """Devuelve análisis operacionales del proyecto para sugerencias de continuidad."""
+
+        project = project_code.strip().upper()
+        if not project:
+            return []
+        safe_limit = max(1, min(int(limit), 200))
+        with self.connect() as db:
+            rows = db.execute(
+                """
+                SELECT id, minute_number, meeting_date, project_code, analysis_json
+                FROM meetings
+                WHERE deleted_at IS NULL
+                  AND COALESCE(is_test, 0)=0
+                  AND project_code=?
+                  AND analysis_json IS NOT NULL
+                  AND TRIM(analysis_json)<>''
+                ORDER BY COALESCE(meeting_date, '') DESC, id DESC
+                LIMIT ?
+                """,
+                (project, safe_limit),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     def list_meetings(self, limit: int = 200, view: str = "active") -> list[dict]:
         safe_limit = max(1, min(int(limit), 5000))
         views = {
