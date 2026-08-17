@@ -9,6 +9,7 @@ import sys
 import threading
 import time
 import tkinter as tk
+from collections.abc import Callable
 from copy import deepcopy
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -1478,6 +1479,9 @@ class MinutasApp(tk.Tk):
                 elif kind == "media_transcribed":
                     self._set_busy(False)
                     self._accept_vtt_path(cast(Path, payload))
+                elif kind == "ui_callback":
+                    callback = cast(Callable[[], None], payload)
+                    callback()
                 elif kind == "error":
                     self._handle_worker_error(payload)
         except queue.Empty:

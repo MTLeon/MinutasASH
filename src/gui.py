@@ -276,6 +276,7 @@ class GuidedMinutasApp(LegacyMinutasApp):
             label="Componentes opcionales de transcripción...",
             command=self.open_transcription_components,
         )
+        tools_menu.add_command(label="Estado de salud...", command=self.show_health_panel)
         tools_menu.add_separator()
         tools_menu.add_command(label="Administración...", command=self.open_administration_center)
         tools_menu.add_command(
@@ -2443,6 +2444,11 @@ Ctrl+Z  Deshacer""",
             command=self.show_project_continuity_suggestions,
         ).pack(side="left", padx=(0, 8))
         ttk.Button(
+            bottom,
+            text="Comparar con anterior",
+            command=self.show_minute_comparison,
+        ).pack(side="left", padx=(0, 8))
+        ttk.Button(
             bottom, text="Aprobar sugerencias verdes", command=self.approve_green_items
         ).pack(side="left")
         ttk.Button(bottom, text="Ver referencia ampliada", command=self.show_item_reference).pack(
@@ -3103,6 +3109,178 @@ Ctrl+Z  Deshacer""",
             style="Primary.TButton",
         ).pack(side="right", padx=(0, 8))
         tree.focus_set()
+
+    def show_health_panel(self) -> None:
+        """Presenta el diagnóstico operativo sin bloquear la ventana principal."""
+
+        from src.diagnostics import collect_diagnostics
+
+        window = tk.Toplevel(self)
+        window.title("Estado de salud")
+        configure_resizable_window(window, self, "health_panel", "940x580", (680, 420))
+        frame = ttk.Frame(window, padding=14)
+        frame.pack(fill="both", expand=True)
+        status_var = tk.StringVar(value="Comprobando recursos y componentes…")
+        ttk.Label(frame, textvariable=status_var, style="Section.TLabel").pack(anchor="w")
+        ttk.Label(
+            frame,
+            text="El informe es de solo lectura. Para soporte puede generar el ZIP sanitizado desde Ayuda.",
+            style="Muted.TLabel",
+            wraplength=850,
+            justify="left",
+        ).pack(anchor="w", pady=(4, 10))
+        columns = ("status", "name", "detail")
+        tree = ttk.Treeview(frame, columns=columns, show="headings")
+        for key, label, width in (
+            ("status", "Estado", 85),
+            ("name", "Componente", 210),
+            ("detail", "Detalle", 600),
+        ):
+            tree.heading(key, text=label)
+            tree.column(key, width=width, anchor="w")
+        tree.tag_configure("OK", foreground=self.appearance_manager.palette.success)
+        tree.tag_configure("AVISO", foreground=self.appearance_manager.palette.warning)
+        tree.tag_configure("ERROR", foreground=self.appearance_manager.palette.danger)
+        tree.pack(side="left", fill="both", expand=True)
+        scrollbar = ttk.Scrollbar(frame, orient="vertical", command=tree.yview)
+        scrollbar.pack(side="right", fill="y")
+        tree.configure(yscrollcommand=scrollbar.set)
+        ttk.Button(window, text="Cerrar", command=window.destroy).pack(
+            anchor="e", padx=14, pady=(0, 14)
+        )
+
+        def display_report(report: object) -> None:
+            if not window.winfo_exists():
+                return
+            items = getattr(report, "items", [])
+            tree.delete(*tree.get_children())
+            errors = 0
+            warnings = 0
+            for index, item in enumerate(items):
+                status = str(getattr(item, "status", "AVISO"))
+                errors += int(status == "ERROR")
+                warnings += int(status == "AVISO")
+                tree.insert(
+                    "",
+                    "end",
+                    iid=str(index),
+                    values=(status, getattr(item, "name", ""), getattr(item, "detail", "")),
+                    tags=(status,),
+                )
+            status_var.set(
+                f"Estado actualizado · {errors} error(es) · {warnings} aviso(s) · {len(items)} comprobaciones"
+            )
+
+        def report_error(exc: Exception) -> None:
+            if window.winfo_exists():
+                status_var.set("No fue posible completar el diagnóstico.")
+            self._log(f"No fue posible construir el estado de salud: {exc}")
+
+        def worker() -> None:
+            try:
+                report = collect_diagnostics(dict(self.config_data))
+                self.worker_queue.put(("ui_callback", partial(display_report, report)))
+            except Exception as exc:
+                self.worker_queue.put(("ui_callback", partial(report_error, exc)))
+
+        threading.Thread(target=worker, daemon=True, name="minutas-health-check").start()
+
+    def show_minute_comparison(self) -> None:
+        """Compara el borrador actual con la última minuta válida del proyecto."""
+
+        from src.meeting_continuity import compare_minute_analyses
+
+        project_code = self.meta_vars["project_code"].get().strip()
+        if not project_code:
+            messagebox.showinfo(
+                "Comparar minutas", "Ingrese primero el código de proyecto.", parent=self
+            )
+            return
+        if not self.items:
+            messagebox.showinfo(
+                "Comparar minutas", "No hay puntos actuales para comparar.", parent=self
+            )
+            return
+        try:
+            rows = self.db.list_project_continuity_rows(project_code)
+            if self.current_meeting_id:
+                rows = [row for row in rows if int(row.get("id") or 0) != self.current_meeting_id]
+            previous_row = next(
+                (
+                    row
+                    for row in rows
+                    if isinstance(row.get("analysis_json"), str)
+                    and row.get("analysis_json", "").strip()
+                ),
+                None,
+            )
+            if previous_row is None:
+                raise ValueError("No hay una minuta anterior con análisis disponible.")
+            previous = MinuteAnalysis.model_validate_json(str(previous_row["analysis_json"]))
+            current = MinuteAnalysis(items=[item.model_copy(deep=True) for item in self.items])
+        except ValueError as exc:
+            messagebox.showinfo("Comparar minutas", str(exc), parent=self)
+            return
+        except Exception as exc:
+            self._log(f"No fue posible comparar minutas: {exc}")
+            messagebox.showerror(
+                "Comparar minutas",
+                "La referencia histórica no es válida. Revise el diagnóstico.",
+                parent=self,
+            )
+            return
+
+        comparison = compare_minute_analyses(previous, current)
+        window = tk.Toplevel(self)
+        window.title("Comparación con minuta anterior")
+        configure_resizable_window(window, self, "minute_comparison", "900x560", (640, 420))
+        frame = ttk.Frame(window, padding=14)
+        frame.pack(fill="both", expand=True)
+        ttk.Label(
+            frame,
+            text=(
+                f"Referencia: {previous_row.get('minute_number') or 'sin número'} · "
+                f"{previous_row.get('meeting_date') or 'sin fecha'}"
+            ),
+            style="Section.TLabel",
+        ).pack(anchor="w")
+        summary = (
+            f"{len(comparison.added)} agregado(s) · {len(comparison.removed)} retirado(s) · "
+            f"{len(comparison.changed)} cambio(s)"
+        )
+        ttk.Label(frame, text=summary, style="Muted.TLabel").pack(anchor="w", pady=(4, 10))
+        text = ScrolledText(frame, wrap="word", state="normal", height=22)
+        self.appearance_manager.configure_text_widget(text, fixed=False)
+        text.pack(fill="both", expand=True)
+        for label, values in (
+            ("AGREGADOS", comparison.added),
+            ("RETIRADOS", comparison.removed),
+        ):
+            text.insert("end", f"{label}\n")
+            if values:
+                for item in values:
+                    text.insert("end", f"• {item.description}\n")
+            else:
+                text.insert("end", "Sin cambios.\n")
+            text.insert("end", "\n")
+        text.insert("end", "CAMBIOS DE DATOS\n")
+        if comparison.changed:
+            labels = {
+                "category": "categoría",
+                "responsible": "responsable",
+                "due_date_text": "plazo",
+                "due_date_iso": "fecha",
+                "review_status": "estado de revisión",
+            }
+            for change in comparison.changed:
+                fields = ", ".join(labels.get(field, field) for field in change.fields)
+                text.insert("end", f"• {change.current.description}: {fields}.\n")
+        else:
+            text.insert("end", "Sin cambios de responsable, plazo, categoría o estado.\n")
+        text.configure(state="disabled")
+        ttk.Button(window, text="Cerrar", command=window.destroy).pack(
+            anchor="e", padx=14, pady=(0, 14)
+        )
 
     def add_item(self) -> None:
         dialog = ItemDialog(self)
