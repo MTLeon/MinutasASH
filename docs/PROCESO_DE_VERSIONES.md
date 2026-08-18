@@ -5,11 +5,12 @@
 3. Ejecutar pruebas automatizadas.
 4. Construir instalador en Windows limpio o CI controlado.
 5. Probar instalación, actualización y desinstalación.
-6. Generar SHA-256.
-7. Fusionar mediante pull request.
-8. Crear tag `vX.Y.Z`.
-9. Crear Release privada en GitHub y adjuntar instalador/hash.
-10. Registrar quién aprobó la entrega.
+6. Generar SHA-256 y el manifiesto de artefactos.
+7. Verificar firma Authenticode y sello temporal de cada ejecutable.
+8. Fusionar mediante pull request.
+9. Crear el tag `vX.Y.Z` desde el mismo commit usado para construir los binarios.
+10. Crear la release en GitHub y adjuntar instaladores, hashes, manifiesto, notas y validación.
+11. Registrar quién aprobó la entrega.
 
 ## Criterios mínimos de salida
 
@@ -18,6 +19,8 @@
 - Instalación en equipo sin entorno de desarrollo.
 - Actualización sin pérdida de datos.
 - Sin archivos reales de cliente en el paquete.
+- Manifiesto con versión, commit, tamaño, SHA-256 y huellas de firma/sello temporal.
+- El tag, `VERSION.txt`, las notas y la validación deben indicar la misma versión.
 
 ## Segunda generación (2.x)
 

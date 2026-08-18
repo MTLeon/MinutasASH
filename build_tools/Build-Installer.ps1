@@ -10,22 +10,6 @@ $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
 $Version = Get-MinutasReleaseVersion -Root $Root
 $SetupBaseName = "MinutasASH_Setup_${Version}_Online"
-
-function Get-Sha256Hex([string]$Path) {
-    $hasher = [System.Security.Cryptography.SHA256]::Create()
-    try {
-        $stream = [System.IO.File]::OpenRead($Path)
-        try {
-            return (-join ($hasher.ComputeHash($stream) | ForEach-Object { $_.ToString("x2") }))
-        }
-        finally {
-            $stream.Dispose()
-        }
-    }
-    finally {
-        $hasher.Dispose()
-    }
-}
 function Write-Step([string]$Text) {
     Write-Host "`n=== $Text ===" -ForegroundColor Cyan
 }

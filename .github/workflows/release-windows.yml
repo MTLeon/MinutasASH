@@ -77,13 +77,22 @@ jobs:
         shell: pwsh
         run: .\build_tools\Build-Installer.ps1
 
+      - name: Generar manifiesto de release
+        shell: pwsh
+        run: |
+          . .\build_tools\Release.ps1
+          New-MinutasReleaseManifest -Root $PWD `
+            -OutputPath .\dist_installer\MinutasASH_RELEASE_MANIFEST.json `
+            -Commit "${{ github.sha }}"
+
       - name: Publicar artefacto de validación
         uses: actions/upload-artifact@v7
         with:
-          name: MinutasASH-Setup-${{ github.ref_name }}
+          name: MinutasASH-Setup-${{ github.sha }}
           path: |
             dist_installer/*.exe
             dist_installer/*SHA256*.txt
+            dist_installer/*MANIFEST*.json
           retention-days: 30
 
       - name: Crear o actualizar GitHub Release
@@ -93,15 +102,19 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = "${{ github.ref_name }}"
+          $version = (Get-Content VERSION.txt -Raw).Trim()
           gh release view $tag 2>$null
           if ($LASTEXITCODE -ne 0) {
             gh release create $tag --title "Minutas ASH $tag" --generate-notes
           }
-          gh release upload $tag `
-            dist_installer\*.exe dist_installer\*SHA256*.txt `
-            docs\Manual_Maestro_2.3.3.md docs\Manual_Usuario_2.3.3.md docs\Manual_Configuracion_2.3.3.md docs\Manual_Programador_2.3.3.md `
-            docs\NOTAS_VERSION_2.3.7.md docs\VALIDACION_2.3.7.md `
-            plantillas\Plantilla_Marcadores_ASH_2.3.docx --clobber
+          $releaseFiles = @(
+            Get-ChildItem dist_installer\*.exe, dist_installer\*SHA256*.txt, dist_installer\*MANIFEST*.json
+            Get-Item docs\Manual_Maestro_2.3.3.md, docs\Manual_Usuario_2.3.3.md,
+              docs\Manual_Configuracion_2.3.3.md, docs\Manual_Programador_2.3.3.md
+            Get-Item "docs\NOTAS_VERSION_$version.md", "docs\VALIDACION_$version.md"
+            Get-Item plantillas\Plantilla_Marcadores_ASH_2.3.docx
+          ) | ForEach-Object FullName
+          gh release upload $tag @releaseFiles --clobber
 
       - name: Retirar certificado temporal
         if: always()
