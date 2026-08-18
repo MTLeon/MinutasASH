@@ -35,7 +35,7 @@ jobs:
           python -m PyInstaller --noconfirm --clean MinutasASH.spec
 
       - name: Publicar aplicación Windows
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: MinutasASH-Windows-${{ github.ref_name }}
           path: dist/MinutasASH/
