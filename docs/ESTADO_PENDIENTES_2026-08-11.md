@@ -16,11 +16,11 @@ Este documento sustituye como fuente de estado a las listas históricas. Los det
 | Observabilidad | ID de procesamiento, logs saneados, diagnóstico ZIP, historial de proveedor, cancelación/reintento/conexión, métricas operativas y pruebas de layout. Panel de salud no bloqueante para RAM, disco, proveedor, componentes, respaldos y cola. |
 | Productividad 2.3.4 | Atajos globales y contextuales, selección múltiple/rango/arrastre, ordenamiento, copiado tabulado, búsqueda de historial, foco automático, mejor contraste, eliminación con deshacer y validación de códigos provisionales. |
 | Comparación local 2.3.7 | Comparador de minuta actual frente a la última referencia válida del proyecto; informa agregados, retirados y cambios de responsable/plazo/categoría/estado sin modificar ninguna versión. |
-| Instaladores | Aplicación y complemento Whisper reconstruidos y firmados. Smoke reproducible: instalar, arrancar GUI 6 s, ejecutar worker, desinstalar y verificar retiro; todos los códigos 0. |
+| Instaladores | Aplicación y complemento Whisper 2.3.7 reconstruidos y firmados con `ASH SIPROI Internal Code Signing`. Smoke reproducible (18-08-2026): instalar, arrancar GUI 6 s, ejecutar worker, desinstalar y verificar retiro; todos los códigos 0. |
 
 ## Validación automatizada vigente
 
-- `scripts/Quality.ps1`: compilación, formato, lint, tipos, 252 pruebas y cobertura 71,37 % (puerta mínima: 70 %).
+- `scripts/Quality.ps1`: compilación, formato, lint, tipos, 253 pruebas y cobertura 71,41 % (puerta mínima: 70 %).
 - `scripts/Evaluate-Benchmark.ps1`: banco comparable por proveedor.
 - `scripts/Test-VisualLayouts.ps1`: 75 combinaciones de resolución/escala, sin fallos.
 - `scripts/Test-InstallerSmoke.ps1`: smoke seguro en rutas aisladas del workspace.
@@ -30,8 +30,8 @@ Este documento sustituye como fuente de estado a las listas históricas. Los det
 - Comparación consolidada: salida/evaluacion/comparacion.json.
 - Estado externo sin secretos: `salida/validacion/estado_externo.json`.
 - Smoke final de instaladores firmados: `.runtime/installer-smoke/20260811-161816/resultado.json`.
-- Instalador principal SHA-256: `54c1585fbe0bf2609c5a4c23677eab8f0e53be6a486833a26c20ac7db551601b`.
-- Complemento Whisper SHA-256: `6446ec133da13e268d13c46ac11ef38fabdbce72ea3c9af7a386c30c8c9a4bad`.
+- Instalador principal SHA-256: `3206f7b12770444f789af84c3aed356cf647e8b904d22743e43fa504ad621337`.
+- Complemento Whisper SHA-256: `e1eff74a3c2ba3362a7f28f357377b2057ce6749c216b2c77a3c20be7fa6f0b8`.
 
 ## Pendientes que requieren insumos externos
 
