@@ -18,7 +18,7 @@ requests==2.34.2
 setuptools==84.0.0
 tkinterdnd2==0.6.2
 typing-extensions==4.16.0
-typing-inspection==0.4.2
+typing-inspection==0.4.4
 urllib3==2.7.0
 pypdf==6.16.1
 pillow==12.3.0
