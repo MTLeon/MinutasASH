@@ -12,8 +12,10 @@ class BuildScriptRegressionTests(unittest.TestCase):
 
         self.assertIn("pip install -r requirements-build-lock.txt", workflow)
         self.assertIn("python -m pytest -q", workflow)
+        self.assertIn("name: MinutasASH-Windows-${{ github.sha }}", workflow)
         self.assertNotIn("python -m unittest discover", workflow)
         self.assertNotIn("pip install -r requirements.txt -r requirements-build.txt", workflow)
+        self.assertNotIn("name: MinutasASH-Windows-${{ github.ref_name }}", workflow)
 
     def test_dependabot_does_not_update_pydantic_core_in_isolation(self):
         config = (ROOT / ".github" / "dependabot.yml").read_text(encoding="utf-8")

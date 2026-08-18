@@ -37,6 +37,6 @@ jobs:
       - name: Publicar aplicación Windows
         uses: actions/upload-artifact@v7
         with:
-          name: MinutasASH-Windows-${{ github.ref_name }}
+          name: MinutasASH-Windows-${{ github.sha }}
           path: dist/MinutasASH/
           retention-days: 30
