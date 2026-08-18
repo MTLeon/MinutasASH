@@ -1,22 +1,19 @@
-from __future__ import annotations
-
 """Ejecución por bloques con recuperación, división automática y consolidación jerárquica."""
 
-from dataclasses import dataclass, field
-import gc
+from __future__ import annotations
+
+import contextlib
 import hashlib
 import json
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from pathlib import Path
 from time import monotonic
-from typing import Any, Callable
+from typing import Any
 
 from src.minute_generator import analyze_chunks, consolidate_minute
-from src.models import ChunkAnalysis, MinuteAnalysis
-from src.ollama_client import (
-    LocalEngineError,
-    LocalEngineTimeout,
-    StructuredOutputTruncated,
-)
+from src.models import ChunkAnalysis, MeetingItem, MinuteAnalysis
+from src.ollama_client import LocalEngineError, LocalEngineTimeout, StructuredOutputTruncated
 from src.processing_checkpoint import (
     ProcessingCheckpoint,
     ProcessingCheckpointStore,
@@ -32,13 +29,10 @@ from src.processing_runtime import (
     stable_processing_key,
 )
 
-
 LogCallback = Callable[[str], None]
 ProgressCallback = Callable[[int, str], None]
 TelemetryCallback = Callable[[dict[str, Any]], None]
 CancelCallback = Callable[[], bool]
-
-
 
 
 class _TransientCheckpointStore:
@@ -144,72 +138,13 @@ def _chunk_to_minute(chunk: ChunkAnalysis) -> MinuteAnalysis:
     )
 
 
-
-
-def _normalized_item_key(value: str | None) -> str:
-    text = " ".join(str(value or "").casefold().split())
-    return "".join(character for character in text if character.isalnum() or character.isspace())
-
-
-def _compact_minute_analysis(analysis: MinuteAnalysis) -> MinuteAnalysis:
-    """Reduce duplicados exactos antes de nuevas llamadas al modelo.
-
-    Solo fusiona puntos cuya categoría, proyecto y descripción normalizada son
-    iguales. Es deliberadamente conservador para no ocultar acuerdos parecidos
-    pero distintos. Conserva la versión con mayor confianza y completa campos
-    faltantes con la otra copia.
-    """
-
-    unique: dict[tuple[str, str, str], Any] = {}
-    order: list[tuple[str, str, str]] = []
-    for item in analysis.items:
-        key = (
-            str(item.category),
-            _normalized_item_key(item.project_code),
-            _normalized_item_key(item.description),
-        )
-        if not key[2]:
-            continue
-        existing = unique.get(key)
-        if existing is None:
-            unique[key] = item.model_copy(deep=True)
-            order.append(key)
-            continue
-        primary, secondary = (item, existing) if item.confidence > existing.confidence else (existing, item)
-        payload = primary.model_dump()
-        for field_name in (
-            "title", "source_speaker", "responsible", "due_date_text",
-            "due_date_iso", "evidence", "review_notes",
-        ):
-            if not payload.get(field_name):
-                payload[field_name] = getattr(secondary, field_name, None)
-        payload["confidence"] = max(float(existing.confidence), float(item.confidence))
-        unique[key] = type(existing).model_validate(payload)
-
-    summary_lines: list[str] = []
-    seen_summary: set[str] = set()
-    for line in str(analysis.executive_summary or "").splitlines():
-        clean = line.strip()
-        key = _normalized_item_key(clean)
-        if clean and key not in seen_summary:
-            seen_summary.add(key)
-            summary_lines.append(clean)
-
-    return analysis.model_copy(
-        update={
-            "executive_summary": "\n".join(summary_lines),
-            "items": [unique[key] for key in order],
-            "warnings": list(dict.fromkeys(analysis.warnings)),
-        },
-        deep=True,
-    )
-
-
 def _deterministic_merge(analyses: list[MinuteAnalysis]) -> MinuteAnalysis:
     objective = next((item.objective for item in analyses if item.objective), None)
-    summaries = [item.executive_summary.strip() for item in analyses if item.executive_summary.strip()]
-    items = []
-    warnings = []
+    summaries = [
+        item.executive_summary.strip() for item in analyses if item.executive_summary.strip()
+    ]
+    items: list[MeetingItem] = []
+    warnings: list[str] = []
     next_meeting = None
     for analysis in analyses:
         items.extend(item.model_copy(deep=True) for item in analysis.items)
@@ -234,10 +169,9 @@ def _emit(
     event_type: str,
     **payload: Any,
 ) -> None:
-    try:
+    # La telemetría es opcional: un observador defectuoso no puede perder trabajo del usuario.
+    with contextlib.suppress(Exception):
         telemetry({"type": event_type, **payload})
-    except Exception:
-        pass
 
 
 def _checkpoint_matches(
@@ -259,7 +193,7 @@ def _checkpoint_matches(
 def _process_chunks(
     client: Any,
     checkpoint: ProcessingCheckpoint,
-    store: ProcessingCheckpointStore,
+    store: ProcessingCheckpointStore | _TransientCheckpointStore,
     metadata: dict[str, Any],
     config: dict[str, Any],
     plan: ProcessingPlan,
@@ -278,9 +212,7 @@ def _process_chunks(
     pipeline_started = monotonic()
 
     if resumed_blocks:
-        log(
-            f"Se reanudará el procesamiento: {resumed_blocks} bloque(s) ya estaban completos."
-        )
+        log(f"Se reanudará el procesamiento: {resumed_blocks} bloque(s) ya estaban completos.")
 
     try:
         while index < len(checkpoint.work_items):
@@ -300,7 +232,9 @@ def _process_chunks(
                     1 for work in checkpoint.work_items if str(work["id"]) in completed
                 )
                 value = 25 + int(43 * completed_count / max(len(checkpoint.work_items), 1))
-                progress(value, f"Reutilizando bloque {completed_count} de {len(checkpoint.work_items)}")
+                progress(
+                    value, f"Reutilizando bloque {completed_count} de {len(checkpoint.work_items)}"
+                )
                 continue
 
             attempt = int(checkpoint.retries.get(chunk_id, 0))
@@ -360,7 +294,7 @@ def _process_chunks(
                     metadata.get("meeting_date"),
                     knowledge_context=knowledge_context,
                 )[0]
-            except LocalEngineTimeout:
+            except LocalEngineTimeout as timeout_error:
                 duration = monotonic() - started
                 checkpoint.retries[chunk_id] = attempt + 1
                 retry_total += 1
@@ -386,7 +320,7 @@ def _process_chunks(
                             }
                             for child_index, part in enumerate(parts, start=1)
                         ]
-                        checkpoint.work_items[index:index + 1] = children
+                        checkpoint.work_items[index : index + 1] = children
                         checkpoint.split_count += 1
                         checkpoint.status = "in_progress"
                         store.save(checkpoint)
@@ -422,7 +356,7 @@ def _process_chunks(
                 raise LocalEngineTimeout(
                     "No fue posible completar uno de los bloques mínimos. "
                     "El avance quedó guardado; cierre aplicaciones exigentes o use el perfil Rápido y continúe."
-                )
+                ) from timeout_error
             except StructuredOutputTruncated as exc:
                 duration = monotonic() - started
                 checkpoint.retries[chunk_id] = attempt + 1
@@ -449,7 +383,7 @@ def _process_chunks(
                             }
                             for child_index, part in enumerate(parts, start=1)
                         ]
-                        checkpoint.work_items[index:index + 1] = children
+                        checkpoint.work_items[index : index + 1] = children
                         checkpoint.split_count += 1
                         checkpoint.status = "in_progress"
                         store.save(checkpoint)
@@ -503,10 +437,6 @@ def _process_chunks(
             checkpoint.completed[chunk_id] = result.model_dump()
             checkpoint.durations[chunk_id] = duration
             checkpoint.status = "in_progress"
-            if bool(config.get("processing_release_completed_text", True)):
-                # El texto ya está representado por el resultado estructurado y no
-                # debe permanecer duplicado en RAM ni en el checkpoint.
-                item["text"] = ""
             store.save(checkpoint)
             index += 1
 
@@ -563,7 +493,7 @@ def _hierarchical_consolidation(
     cancelled: CancelCallback,
 ) -> tuple[MinuteAnalysis, int, int]:
     profile = plan.effective_profile
-    current = [_compact_minute_analysis(_chunk_to_minute(item)) for item in chunk_analyses]
+    current = [_chunk_to_minute(item) for item in chunk_analyses]
     deterministic = 0
     level = 0
     if not current:
@@ -580,7 +510,7 @@ def _hierarchical_consolidation(
             profile.consolidation_batch_chars,
         )
         if len(groups) == len(current) and len(current) > 1:
-            groups = [current[index:index + 2] for index in range(0, len(current), 2)]
+            groups = [current[index : index + 2] for index in range(0, len(current), 2)]
         next_level: list[MinuteAnalysis] = []
         log(f"Consolidación jerárquica nivel {level}: {len(groups)} grupo(s).")
         for group_index, group in enumerate(groups, start=1):
@@ -648,9 +578,8 @@ def _hierarchical_consolidation(
                     group_index=group_index,
                     reason=str(exc),
                 )
-            next_level.append(_compact_minute_analysis(result))
+            next_level.append(result)
         current = next_level
-        gc.collect()
     return current[0], deterministic, level
 
 
@@ -682,9 +611,7 @@ def analyze_resilient_chunks(
     # pase de rápido a equilibrado (o viceversa). Así se conservan los bloques
     # ya completados.
     checkpoint_profile_id = (
-        "auto"
-        if plan.requested_profile == "auto"
-        else plan.effective_profile.profile_id
+        "auto" if plan.requested_profile == "auto" else plan.effective_profile.profile_id
     )
     key = stable_processing_key(
         source_sha,
@@ -744,9 +671,6 @@ def analyze_resilient_chunks(
         telemetry=telemetry,
         cancelled=cancelled,
     )
-
-    del chunk_analyses
-    gc.collect()
 
     checkpoint.status = "completed"
     checkpoint.consolidation_levels.append(

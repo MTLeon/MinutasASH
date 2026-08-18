@@ -1,5 +1,7 @@
 #define MyAppName "Minutas ASH"
-#define MyAppVersion "2.3.5"
+#ifndef MyAppVersion
+  #error MyAppVersion debe proporcionarse desde VERSION.txt mediante Build-Installer.ps1
+#endif
 #define MyAppPublisher "ASH Ingeniería y Proyectos"
 #define MyAppExeName "MinutasASH.exe"
 
@@ -17,7 +19,7 @@ DefaultGroupName=ASH
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 OutputDir=..\dist_installer
-OutputBaseFilename=MinutasASH_Setup_2.3.5_Online
+OutputBaseFilename=MinutasASH_Setup_{#MyAppVersion}_Online
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
@@ -41,11 +43,12 @@ Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "Crear acceso directo en el escritorio"; GroupDescription: "Accesos directos:"; Flags: checkedonce
+Name: "whisper"; Description: "Transcripción local de audio y video (Whisper CPU + modelo base, 235 MB)"; GroupDescription: "Componentes opcionales:"; Flags: unchecked
 
 [Files]
 Source: "..\dist\MinutasASH\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "..\docs\*"; DestDir: "{app}\docs"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "..\plantillas\*"; DestDir: "{app}\plantillas"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\dist_whisper\WhisperWorker.exe"; DestDir: "{localappdata}\MinutasASH\components\whisper"; Flags: ignoreversion; Tasks: whisper
+Source: "..\.runtime\whisper-package\MinutasASH\models\whisper\*"; DestDir: "{localappdata}\MinutasASH\models\whisper"; Flags: ignoreversion recursesubdirs createallsubdirs; Tasks: whisper
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"
@@ -66,6 +69,30 @@ Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.txt\shell\MinutasA
 Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.docx\shell\MinutasASH"; ValueType: string; ValueName: ""; ValueData: "Abrir como fuente en Minutas ASH"; Flags: uninsdeletekey
 Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.docx\shell\MinutasASH"; ValueType: string; ValueName: "Icon"; ValueData: "{app}\{#MyAppExeName},0"
 Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.docx\shell\MinutasASH\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""
+Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.mp3\shell\MinutasASH"; ValueType: string; ValueName: ""; ValueData: "Transcribir con Minutas ASH"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.mp3\shell\MinutasASH"; ValueType: string; ValueName: "Icon"; ValueData: "{app}\{#MyAppExeName},0"
+Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.mp3\shell\MinutasASH\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""
+Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.wav\shell\MinutasASH"; ValueType: string; ValueName: ""; ValueData: "Transcribir con Minutas ASH"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.wav\shell\MinutasASH"; ValueType: string; ValueName: "Icon"; ValueData: "{app}\{#MyAppExeName},0"
+Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.wav\shell\MinutasASH\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""
+Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.m4a\shell\MinutasASH"; ValueType: string; ValueName: ""; ValueData: "Transcribir con Minutas ASH"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.m4a\shell\MinutasASH"; ValueType: string; ValueName: "Icon"; ValueData: "{app}\{#MyAppExeName},0"
+Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.m4a\shell\MinutasASH\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""
+Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.flac\shell\MinutasASH"; ValueType: string; ValueName: ""; ValueData: "Transcribir con Minutas ASH"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.flac\shell\MinutasASH"; ValueType: string; ValueName: "Icon"; ValueData: "{app}\{#MyAppExeName},0"
+Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.flac\shell\MinutasASH\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""
+Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.ogg\shell\MinutasASH"; ValueType: string; ValueName: ""; ValueData: "Transcribir con Minutas ASH"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.ogg\shell\MinutasASH"; ValueType: string; ValueName: "Icon"; ValueData: "{app}\{#MyAppExeName},0"
+Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.ogg\shell\MinutasASH\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""
+Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.mp4\shell\MinutasASH"; ValueType: string; ValueName: ""; ValueData: "Transcribir con Minutas ASH"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.mp4\shell\MinutasASH"; ValueType: string; ValueName: "Icon"; ValueData: "{app}\{#MyAppExeName},0"
+Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.mp4\shell\MinutasASH\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""
+Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.mkv\shell\MinutasASH"; ValueType: string; ValueName: ""; ValueData: "Transcribir con Minutas ASH"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.mkv\shell\MinutasASH"; ValueType: string; ValueName: "Icon"; ValueData: "{app}\{#MyAppExeName},0"
+Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.mkv\shell\MinutasASH\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""
+Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.webm\shell\MinutasASH"; ValueType: string; ValueName: ""; ValueData: "Transcribir con Minutas ASH"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.webm\shell\MinutasASH"; ValueType: string; ValueName: "Icon"; ValueData: "{app}\{#MyAppExeName},0"
+Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.webm\shell\MinutasASH\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Parameters: "--provision-auto"; Description: "Preparar componentes de la aplicación"; StatusMsg: "Preparando Minutas ASH..."; Flags: waituntilterminated skipifsilent

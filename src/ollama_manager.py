@@ -2,14 +2,15 @@ from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
 import shutil
 import subprocess
 import tempfile
 import threading
 import time
-from typing import Any, Callable
 import zipfile
+from collections.abc import Callable
+from pathlib import Path
+from typing import Any
 
 import requests
 
@@ -20,7 +21,6 @@ from src.runtime_paths import (
     managed_runtime_dir,
     managed_runtime_executable,
 )
-
 
 LogCallback = Callable[[str], None]
 ProgressCallback = Callable[[int, str], None]
@@ -64,8 +64,8 @@ def _system_candidates() -> list[Path]:
         candidates.append(Path(found))
 
     local = Path(os.environ.get("LOCALAPPDATA", ""))
-    program_files = Path(os.environ.get("ProgramFiles", "C:/Program Files"))
-    program_files_x86 = Path(os.environ.get("ProgramFiles(x86)", "C:/Program Files (x86)"))
+    program_files = Path(os.environ.get("PROGRAMFILES", "C:/Program Files"))
+    program_files_x86 = Path(os.environ.get("PROGRAMFILES(X86)", "C:/Program Files (x86)"))
     candidates.extend(
         [
             local / "Programs" / "Ollama" / "ollama.exe",
@@ -220,7 +220,9 @@ def download_managed_runtime(
 
     log("Descargando el componente local desde la distribución oficial...")
     try:
-        with requests.get(url, stream=True, timeout=(30, timeout_seconds), allow_redirects=True) as response:
+        with requests.get(
+            url, stream=True, timeout=(30, timeout_seconds), allow_redirects=True
+        ) as response:
             response.raise_for_status()
             total = int(response.headers.get("content-length") or 0)
             completed = 0
@@ -242,7 +244,9 @@ def download_managed_runtime(
 
     if final_archive.stat().st_size < minimum_bytes:
         final_archive.unlink(missing_ok=True)
-        raise RuntimePreparationError("La descarga terminó incompleta o no corresponde al paquete esperado.")
+        raise RuntimePreparationError(
+            "La descarga terminó incompleta o no corresponde al paquete esperado."
+        )
     if not zipfile.is_zipfile(final_archive):
         final_archive.unlink(missing_ok=True)
         raise RuntimePreparationError("El archivo descargado no es un paquete ZIP válido.")
@@ -254,7 +258,9 @@ def download_managed_runtime(
         _safe_extract_zip(final_archive, extracted)
         candidates = list(extracted.rglob("ollama.exe"))
         if not candidates:
-            raise RuntimePreparationError("El paquete descargado no contiene el ejecutable requerido.")
+            raise RuntimePreparationError(
+                "El paquete descargado no contiene el ejecutable requerido."
+            )
 
         source_root = candidates[0].parent
         staged = parent / "ollama_staged"
@@ -274,6 +280,7 @@ def download_managed_runtime(
         staged.replace(destination)
         shutil.rmtree(backup, ignore_errors=True)
 
+    final_archive.unlink(missing_ok=True)
     progress(100, "Componente local preparado")
     log("Componente local preparado correctamente.")
     return managed_runtime_executable()
@@ -306,9 +313,7 @@ def list_models(base_url: str) -> list[str]:
     response = requests.get(f"{base_url.rstrip('/')}/api/tags", timeout=15)
     response.raise_for_status()
     return sorted(
-        item.get("name")
-        for item in response.json().get("models", [])
-        if item.get("name")
+        item.get("name") for item in response.json().get("models", []) if item.get("name")
     )
 
 

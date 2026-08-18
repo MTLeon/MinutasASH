@@ -5,18 +5,20 @@ from PyInstaller.utils.hooks import collect_all
 root = Path(SPECPATH)
 
 dnd_datas, dnd_binaries, dnd_hiddenimports = collect_all("tkinterdnd2")
+reportlab_datas, reportlab_binaries, reportlab_hiddenimports = collect_all("reportlab")
+msal_datas, msal_binaries, msal_hiddenimports = collect_all("msal")
 
 a = Analysis(
     [str(root / "src" / "gui.py")],
     pathex=[str(root)],
-    binaries=dnd_binaries,
+    binaries=dnd_binaries + reportlab_binaries + msal_binaries,
     datas=[
         (str(root / "assets" / "logo_ash.png"), "assets"),
         (str(root / "assets" / "ash.ico"), "assets"),
         (str(root / "config.json"), "."),
         (str(root / "docs"), "docs"),
         (str(root / "plantillas"), "plantillas"),
-    ] + dnd_datas,
+    ] + dnd_datas + reportlab_datas + msal_datas,
     hiddenimports=[
         "docx",
         "docx.oxml",
@@ -32,6 +34,7 @@ a = Analysis(
         "src.review_quality",
         "src.release_identity",
         "src.secret_store",
+        "src.teams_graph",
         "src.updater",
         "src.providers.ollama_local",
         "src.providers.openai_responses",
@@ -48,8 +51,9 @@ a = Analysis(
         "src.template_service",
         "src.documents.managed_template",
         "openpyxl",
+        "pypdf",
         "openpyxl.styles",
-    ] + dnd_hiddenimports,
+    ] + dnd_hiddenimports + reportlab_hiddenimports + msal_hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

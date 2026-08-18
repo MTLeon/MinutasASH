@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from pathlib import Path
 import json
+from pathlib import Path
 
 from src.catalog_models import TemplateManifest, TemplateValidation
-from src.database import AppDatabase
+from src.repositories.base import MeetingRepository
 from src.runtime_paths import records_dir, templates_dir
 from src.template_engine import (
     create_test_metadata,
@@ -16,7 +16,7 @@ from src.template_engine import (
 
 
 class TemplateService:
-    def __init__(self, database: AppDatabase) -> None:
+    def __init__(self, database: MeetingRepository) -> None:
         self.database = database
         templates_dir().mkdir(parents=True, exist_ok=True)
 
@@ -94,7 +94,12 @@ class TemplateService:
         metadata.template_version_id = version_id
         metadata.template_key = str(record["template_key"])
         metadata.template_version = str(record["version_label"])
-        target = Path(destination) if destination else records_dir() / f"prueba_plantilla_{record['template_key']}_{record['version_label']}.docx"
+        target = (
+            Path(destination)
+            if destination
+            else records_dir()
+            / f"prueba_plantilla_{record['template_key']}_{record['version_label']}.docx"
+        )
         target.parent.mkdir(parents=True, exist_ok=True)
         render_template_document(record["file_path"], metadata, analysis, target)
         self.database.set_template_state(version_id, "testing")
@@ -116,5 +121,7 @@ class TemplateService:
     def retire(self, version_id: int) -> None:
         self.database.set_template_state(version_id, "retired")
 
-    def resolve(self, project_code: str | None, meeting_type: str | None, default_key: str | None) -> dict | None:
+    def resolve(
+        self, project_code: str | None, meeting_type: str | None, default_key: str | None
+    ) -> dict | None:
         return self.database.resolve_template_version(project_code, meeting_type, default_key)

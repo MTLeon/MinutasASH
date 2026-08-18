@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -11,12 +11,12 @@ class StrictModel(BaseModel):
 
 
 class Attendee(StrictModel):
-    id: Optional[int] = None
-    initials: Optional[str] = None
+    id: int | None = None
+    initials: str | None = None
     name: str
-    email: Optional[str] = None
-    role: Optional[str] = None
-    organization: Optional[str] = None
+    email: str | None = None
+    role: str | None = None
+    organization: str | None = None
 
     @field_validator("name")
     @classmethod
@@ -44,22 +44,22 @@ class Attendee(StrictModel):
 
 class MeetingMetadata(StrictModel):
     meeting_type: Literal["cliente", "interna", "kom", "seguimiento", "cartera", "otra"] = "cliente"
-    minute_number: Optional[str] = None
-    document_date: Optional[str] = None
-    meeting_date: Optional[str] = None
-    location: Optional[str] = "Microsoft Teams"
-    matter: Optional[str] = None
-    project_code: Optional[str] = None
-    project_description: Optional[str] = None
-    client: Optional[str] = None
-    minute_taker: Optional[str] = None
-    minute_taker_date: Optional[str] = None
-    approved_by: Optional[str] = None
-    approval_date: Optional[str] = None
-    template_version_id: Optional[int] = None
-    template_key: Optional[str] = None
-    template_version: Optional[str] = None
-    source_type: Literal["vtt", "docx", "txt", "pasted", "notes"] = "vtt"
+    minute_number: str | None = None
+    document_date: str | None = None
+    meeting_date: str | None = None
+    location: str | None = "Microsoft Teams"
+    matter: str | None = None
+    project_code: str | None = None
+    project_description: str | None = None
+    client: str | None = None
+    minute_taker: str | None = None
+    minute_taker_date: str | None = None
+    approved_by: str | None = None
+    approval_date: str | None = None
+    template_version_id: int | None = None
+    template_key: str | None = None
+    template_version: str | None = None
+    source_type: Literal["vtt", "srt", "docx", "pdf", "txt", "pasted", "notes"] = "vtt"
     source_quality: Literal["alta", "media", "baja"] = "alta"
     attendees: list[Attendee] = Field(default_factory=list)
 
@@ -90,7 +90,7 @@ class MeetingMetadata(StrictModel):
         return value.upper().strip() if value else None
 
     @model_validator(mode="after")
-    def deduplicate_attendees(self) -> "MeetingMetadata":
+    def deduplicate_attendees(self) -> MeetingMetadata:
         unique: list[Attendee] = []
         seen: set[str] = set()
         for attendee in self.attendees:
@@ -104,42 +104,44 @@ class MeetingMetadata(StrictModel):
 
 
 class MeetingItem(StrictModel):
-    project_code: Optional[str] = Field(
+    project_code: str | None = Field(
         default=None,
         description="Código de proyecto asociado al punto en reuniones multiproyecto.",
     )
     category: Literal["informativo", "acuerdo", "compromiso", "pendiente"]
-    title: Optional[str] = Field(
+    title: str | None = Field(
         default=None,
         description="Título breve y fiel del asunto, sin inventar contenido.",
     )
     description: str = Field(
         description="Descripción profesional del punto tratado.",
     )
-    source_speaker: Optional[str] = Field(
+    source_speaker: str | None = Field(
         default=None,
         description="Hablante principal que comunicó el punto, si es identificable.",
     )
-    responsible: Optional[str] = Field(
+    responsible: str | None = Field(
         default=None,
         description="Responsable explícito. null si no fue indicado.",
     )
-    due_date_text: Optional[str] = Field(
+    due_date_text: str | None = Field(
         default=None,
         description="Plazo tal como se mencionó. null si no fue indicado.",
     )
-    due_date_iso: Optional[str] = Field(
+    due_date_iso: str | None = Field(
         default=None,
         description="Fecha YYYY-MM-DD solo cuando sea inequívoca.",
     )
-    evidence: Optional[str] = Field(
+    evidence: str | None = Field(
         default=None,
         description="Marca temporal real de la transcripción.",
     )
+    evidence_score: float | None = Field(default=None, ge=0.0, le=1.0)
+    evidence_verified: bool | None = None
     confidence: float = Field(default=0.5, ge=0.0, le=1.0)
     review_status: Literal["pendiente", "aprobado", "descartado"] = "pendiente"
     origin: Literal["modelo", "regla", "manual", "importado"] = "modelo"
-    review_notes: Optional[str] = None
+    review_notes: str | None = None
 
     @field_validator("project_code")
     @classmethod
@@ -167,22 +169,22 @@ class MeetingItem(StrictModel):
 
 
 class NextMeeting(StrictModel):
-    description: Optional[str] = None
-    date_text: Optional[str] = None
-    time_text: Optional[str] = None
-    evidence: Optional[str] = None
+    description: str | None = None
+    date_text: str | None = None
+    time_text: str | None = None
+    evidence: str | None = None
 
 
 class ChunkAnalysis(StrictModel):
-    objective_hint: Optional[str] = None
+    objective_hint: str | None = None
     summary_points: list[str] = Field(default_factory=list)
     items: list[MeetingItem] = Field(default_factory=list)
-    next_meeting: Optional[NextMeeting] = None
+    next_meeting: NextMeeting | None = None
 
 
 class MinuteAnalysis(StrictModel):
-    objective: Optional[str] = None
+    objective: str | None = None
     executive_summary: str = ""
     items: list[MeetingItem] = Field(default_factory=list)
-    next_meeting: Optional[NextMeeting] = None
+    next_meeting: NextMeeting | None = None
     warnings: list[str] = Field(default_factory=list)

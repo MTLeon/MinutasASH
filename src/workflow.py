@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import contextlib
+from collections.abc import Callable
 from dataclasses import dataclass, field
-import gc
 from pathlib import Path
 from time import monotonic
-from typing import Any, Callable
+from typing import Any
 
 from src.coverage_guard import (
     ActionCandidate,
@@ -15,6 +16,7 @@ from src.coverage_guard import (
     merge_analyses,
 )
 from src.documents.registry import get_document_provider
+from src.evidence_validation import annotate_evidence
 from src.meeting_sources import read_meeting_source
 from src.metadata import enrich_attendees
 from src.minute_generator import (
@@ -23,6 +25,7 @@ from src.minute_generator import (
 )
 from src.models import MeetingMetadata, MinuteAnalysis
 from src.ollama_client import LocalEngineTimeout, StructuredOutputTruncated
+from src.pdf_writer import generate_minute_pdf
 from src.postprocess import normalize_analysis
 from src.processing_runtime import (
     adaptive_timeout_seconds,
@@ -45,11 +48,9 @@ from src.vtt_reader import (
     TranscriptSegment,
     merge_adjacent_segments,
     normalized_transcript,
-    optimize_transcript_segments,
     split_transcript,
     unique_speakers,
 )
-
 
 LogCallback = Callable[[str], None]
 ProgressCallback = Callable[[int, str], None]
@@ -108,10 +109,9 @@ def _configure_request(
 
 
 def _emit(telemetry: TelemetryCallback, event_type: str, **payload: Any) -> None:
-    try:
+    # La telemetría es opcional: un observador defectuoso no puede perder trabajo del usuario.
+    with contextlib.suppress(Exception):
         telemetry({"type": event_type, **payload})
-    except Exception:
-        pass
 
 
 def _candidate_batches(
@@ -134,111 +134,6 @@ def _candidate_batches(
     if current:
         batches.append(current)
     return batches
-
-
-def _candidate_subset_for_prompt(
-    candidates: list[ActionCandidate],
-    config: dict,
-) -> list[ActionCandidate]:
-    """Limita ayudas al modelo sin afectar el control final de cobertura."""
-
-    maximum = max(10, int(config.get("semantic_guard_prompt_max_candidates", 80)))
-    maximum_chars = max(1000, int(config.get("semantic_guard_prompt_max_chars", 5500)))
-    ordered = sorted(
-        candidates,
-        key=lambda item: (-item.confidence, item.index),
-    )
-    selected: list[ActionCandidate] = []
-    size = 0
-    for candidate in ordered:
-        rendered = format_candidates_for_prompt([candidate])
-        if selected and (len(selected) >= maximum or size + len(rendered) > maximum_chars):
-            break
-        selected.append(candidate)
-        size += len(rendered)
-    return sorted(selected, key=lambda item: item.index)
-
-
-def _warmup_and_replan_local(
-    client: Any,
-    config: dict,
-    transcript_chars: int,
-    model: str,
-    plan,
-    *,
-    log: LogCallback,
-    progress: ProgressCallback,
-    telemetry: TelemetryCallback,
-):
-    if not bool(config.get("processing_warmup_resource_recheck", True)):
-        return plan
-    warmup = getattr(client, "warmup", None)
-    if not callable(warmup):
-        return plan
-    progress(18, "Preparando el modelo local y comprobando memoria")
-    log("Preparando el modelo local para medir la memoria real disponible.")
-    warmup()
-    snapshot = get_resource_snapshot()
-    revised = resolve_processing_plan(
-        config,
-        transcript_chars,
-        is_remote=False,
-        snapshot=snapshot,
-        model=model,
-        model_loaded=True,
-    )
-    rank = {"fast": 0, "balanced": 1, "precise": 2}
-    previous_rank = rank.get(plan.effective_profile.profile_id, 1)
-    revised_rank = rank.get(revised.effective_profile.profile_id, 1)
-    selected = revised
-    retained_for_stability = False
-    if revised_rank > previous_rank:
-        # Una ejecución iniciada en modo conservador no debe aumentar después
-        # el tamaño de bloque. La memoria puede fluctuar durante el calentamiento
-        # y un ascenso produciría exactamente el pico que se intentó evitar.
-        selected = plan
-        retained_for_stability = True
-
-    _emit(
-        telemetry,
-        "resource_recheck",
-        percent=19,
-        previous_profile=plan.effective_profile.profile_id,
-        previous_profile_name=plan.effective_profile.display_name,
-        effective_profile=selected.effective_profile.to_dict(),
-        resource_snapshot=snapshot.to_dict(),
-        reason=(
-            "Se conserva el perfil preventivo para evitar un aumento de carga."
-            if retained_for_stability
-            else revised.reason
-        ),
-        retained_for_stability=retained_for_stability,
-    )
-    if retained_for_stability:
-        log(
-            "La memoria posterior permitiría un perfil mayor, pero se mantiene "
-            f"{plan.effective_profile.display_name} por estabilidad."
-        )
-        if revised.memory_warning:
-            log(f"Advertencia posterior a la carga: {revised.memory_warning}")
-        return plan
-    if revised.effective_profile.profile_id != plan.effective_profile.profile_id:
-        log(
-            "Perfil ajustado después de cargar el modelo: "
-            f"{revised.effective_profile.display_name}."
-        )
-    if revised.memory_warning:
-        log(f"Advertencia posterior a la carga: {revised.memory_warning}")
-    return revised
-
-
-def _release_local_model(client: Any, config: dict, log: LogCallback) -> None:
-    if not bool(config.get("unload_model_after_processing", True)):
-        return
-    unload = getattr(client, "unload", None)
-    if callable(unload):
-        unload()
-        log("Memoria del modelo local liberada al finalizar el procesamiento.")
 
 
 def analyze_meeting(
@@ -265,19 +160,11 @@ def analyze_meeting(
     log(f"Leyendo archivo: {source.name}")
     meeting_source = read_meeting_source(source, preferred_type=metadata.source_type)
     raw_segments = meeting_source.segments
-    source_type = meeting_source.source_type
-    source_quality = meeting_source.quality
-    source_display_name = meeting_source.display_name
-    source_warnings = tuple(meeting_source.warnings)
-    segments, transcript_stats = optimize_transcript_segments(
-        raw_segments,
-        maximum_gap_seconds=float(config.get("transcript_merge_gap_seconds", 6.0)),
-        remove_noise=bool(config.get("transcript_remove_noise", True)),
-    )
+    segments = merge_adjacent_segments(raw_segments)
     metadata = metadata.model_copy(
         update={
-            "source_type": source_type,
-            "source_quality": source_quality,
+            "source_type": meeting_source.source_type,
+            "source_quality": meeting_source.quality,
         }
     )
     speakers = unique_speakers(raw_segments)
@@ -286,22 +173,18 @@ def analyze_meeting(
         speakers,
         bool(config.get("auto_add_transcript_speakers", True)),
     )
-    log(f"Fuente: {source_display_name} · calidad {source_quality}")
-    for warning in source_warnings:
+    log(f"Fuente: {meeting_source.display_name} · calidad {meeting_source.quality}")
+    for warning in meeting_source.warnings:
         log(f"Advertencia de fuente: {warning}")
-    log(
-        f"Intervenciones: {transcript_stats.original_segments} originales → "
-        f"{transcript_stats.optimized_segments} optimizadas · "
-        f"reducción de texto {transcript_stats.reduction_percent:.1f} %."
-    )
+    log(f"Intervenciones útiles: {len(segments)}")
     log(f"Participantes detectados: {len(speakers)}")
 
     guard_enabled = bool(config.get("semantic_guard_enabled", True))
     candidates: list[ActionCandidate] = []
     if guard_enabled:
         candidates = extract_action_candidates(
-            segments,
-            maximum_candidates=int(config.get("semantic_guard_max_candidates", 300)),
+            raw_segments,
+            maximum_candidates=int(config.get("semantic_guard_max_candidates", 500)),
         )
         log(f"Expresiones explícitas para control de cobertura: {len(candidates)}")
 
@@ -317,7 +200,6 @@ def analyze_meeting(
         config,
         len(transcript_text),
         is_remote=descriptor.is_remote,
-        model=selected_model or str(config.get("model", "qwen3:8b")),
     )
     profile = plan.effective_profile
     effective_config = dict(config)
@@ -364,7 +246,6 @@ def analyze_meeting(
                 config,
                 len(transcript_text),
                 is_remote=False,
-                model=str(config.get("model", "qwen3:8b")),
             )
             profile = plan.effective_profile
             effective_config.update(
@@ -382,29 +263,8 @@ def analyze_meeting(
         else:
             raise
 
-    if provider_id == "ollama_local":
-        plan = _warmup_and_replan_local(
-            client,
-            config,
-            len(transcript_text),
-            getattr(client, "model", selected_model) or str(config.get("model", "qwen3:8b")),
-            plan,
-            log=log,
-            progress=progress,
-            telemetry=telemetry,
-        )
-        profile = plan.effective_profile
-        effective_config.update(
-            {
-                "timeout_seconds": profile.timeout_seconds,
-                "context_length": profile.context_length,
-                "max_chars_per_chunk": profile.chunk_chars,
-                "single_pass_max_chars": profile.single_pass_chars,
-            }
-        )
-
     progress(21, "Preparando contenido")
-    knowledge_context = str(config.get("technical_dictionary_context", "")).strip()[:4000]
+    knowledge_context = str(config.get("technical_dictionary_context", "")).strip()[:8000]
     if knowledge_context:
         log("Se aplicará el diccionario técnico aprobado para normalizar vocabulario.")
 
@@ -414,10 +274,7 @@ def analyze_meeting(
         "single_pass_timed_out": False,
     }
 
-    use_single_pass = (
-        not plan.force_chunking
-        and len(transcript_text) <= profile.single_pass_chars
-    )
+    use_single_pass = not plan.force_chunking and len(transcript_text) <= profile.single_pass_chars
     analysis: MinuteAnalysis
     if use_single_pass:
         if cancelled():
@@ -436,18 +293,13 @@ def analyze_meeting(
             operation={"stage": "single_pass", "block_index": 1, "total_blocks": 1},
         )
         progress(30, "Analizando reunión en una etapa")
-        log(
-            "Procesamiento optimizado en una etapa · "
-            f"espera máxima adaptativa {timeout} s."
-        )
+        log(f"Procesamiento optimizado en una etapa · espera máxima adaptativa {timeout} s.")
         try:
             analysis = analyze_complete_transcript(
                 client,
                 transcript_text,
                 metadata.model_dump(),
-                coverage_hints=format_candidates_for_prompt(
-                    _candidate_subset_for_prompt(candidates, config)
-                ),
+                coverage_hints=format_candidates_for_prompt(candidates),
                 knowledge_context=knowledge_context,
             )
             progress(76, "Comprobando resultados")
@@ -505,11 +357,7 @@ def analyze_meeting(
         not analysis.items or initial_report.ratio < minimum_coverage
     )
 
-    if (
-        guard_enabled
-        and should_recover
-        and bool(config.get("semantic_guard_second_pass", True))
-    ):
+    if guard_enabled and should_recover and bool(config.get("semantic_guard_second_pass", True)):
         if cancelled():
             raise InterruptedError("Proceso cancelado por el usuario.")
         recovery_attempted = True
@@ -518,15 +366,7 @@ def analyze_meeting(
             "El control de cobertura detectó posibles omisiones "
             f"({initial_report.covered_count}/{initial_report.candidate_count})."
         )
-        recovery_candidates = sorted(
-            initial_report.uncovered,
-            key=lambda item: (-item.confidence, item.index),
-        )[: max(10, int(config.get("semantic_guard_second_pass_max_candidates", 120)))]
-        batches = _candidate_batches(
-            list(recovery_candidates),
-            max_chars=int(config.get("semantic_guard_recovery_batch_chars", 5000)),
-            max_items=int(config.get("semantic_guard_recovery_batch_items", 30)),
-        )
+        batches = _candidate_batches(list(initial_report.uncovered))
         recovery_errors: list[str] = []
         for batch_index, batch in enumerate(batches, start=1):
             if cancelled():
@@ -571,9 +411,7 @@ def analyze_meeting(
                 )
         recovery_error = " | ".join(recovery_errors) or None
         if not recovery_errors:
-            log(
-                f"Se completó la comprobación focalizada en {len(batches)} grupo(s)."
-            )
+            log(f"Se completó la comprobación focalizada en {len(batches)} grupo(s).")
 
     after_recovery = evaluate_coverage(candidates, analysis)
     if (
@@ -585,9 +423,7 @@ def analyze_meeting(
             analysis,
             after_recovery.uncovered,
             metadata,
-            minimum_confidence=float(
-                config.get("semantic_guard_fallback_min_confidence", 0.82)
-            ),
+            minimum_confidence=float(config.get("semantic_guard_fallback_min_confidence", 0.82)),
         )
         analysis = normalize_analysis(analysis, metadata)
         if fallback_added:
@@ -595,6 +431,14 @@ def analyze_meeting(
                 f"El control automático recuperó {fallback_added} punto(s) "
                 "explícito(s) para revisión humana."
             )
+
+    evidence_checks = annotate_evidence(analysis.items, segments)
+    evidence_verified = sum(check.verified is True for check in evidence_checks)
+    evidence_unverified = sum(check.verified is False for check in evidence_checks)
+    if evidence_unverified:
+        analysis.warnings.append(
+            f"{evidence_unverified} punto(s) requieren revisar su evidencia temporal."
+        )
 
     final_report = evaluate_coverage(candidates, analysis)
     if final_report.uncovered:
@@ -604,11 +448,32 @@ def analyze_meeting(
         )
     analysis.warnings = list(dict.fromkeys(analysis.warnings))
 
+    final_snapshot = get_resource_snapshot()
+    estimated_input_tokens = max(1, len(transcript_text) // 4)
+    input_rate = float(
+        config.get(
+            f"{provider_id}_input_cost_per_million_usd",
+            config.get("remote_input_cost_per_million_usd", 0.0),
+        )
+        or 0.0
+    )
+    estimated_cost_usd = (
+        estimated_input_tokens * input_rate / 1_000_000 if descriptor.is_remote else 0.0
+    )
+    try:
+        source_size_bytes = source.stat().st_size
+    except OSError:
+        source_size_bytes = 0
+
     diagnostics = {
-        "source_type": source_type,
-        "source_quality": source_quality,
-        "source_warnings": list(source_warnings),
-        "transcript_optimization": transcript_stats.to_dict(),
+        "source_type": meeting_source.source_type,
+        "source_quality": meeting_source.quality,
+        "source_warnings": list(meeting_source.warnings),
+        "evidence": {
+            "verified": evidence_verified,
+            "unverified": evidence_unverified,
+            "not_applicable": len(evidence_checks) - evidence_verified - evidence_unverified,
+        },
         "semantic_guard_enabled": guard_enabled,
         "quality_status": _quality_status(
             len(candidates), fallback_added, len(final_report.uncovered)
@@ -616,11 +481,23 @@ def analyze_meeting(
         "candidate_count": len(candidates),
         "initial_coverage": initial_report.to_dict(),
         "recovery_attempted": recovery_attempted,
-        "recovery_batches": len(batches) if recovery_attempted else 0,
+        "recovery_batches": len(_candidate_batches(list(initial_report.uncovered)))
+        if recovery_attempted
+        else 0,
         "recovery_error": recovery_error,
         "fallback_added": fallback_added,
         "final_coverage": final_report.to_dict(),
         "processing": pipeline_diagnostics,
+        "performance": {
+            "source_size_bytes": source_size_bytes,
+            "transcript_characters": len(transcript_text),
+            "segment_count": len(segments),
+            "item_count": len(analysis.items),
+            "estimated_input_tokens": estimated_input_tokens,
+            "estimated_cost_usd": round(estimated_cost_usd, 6),
+            "ending_memory_percent": final_snapshot.memory_percent,
+            "ending_available_memory_bytes": final_snapshot.available_memory_bytes,
+        },
         "total_elapsed_seconds": monotonic() - pipeline_started,
     }
 
@@ -638,8 +515,6 @@ def analyze_meeting(
         elapsed_seconds=monotonic() - pipeline_started,
         item_count=len(analysis.items),
     )
-    _release_local_model(client, config, log)
-    gc.collect()
     return AnalysisBundle(
         metadata=metadata,
         analysis=analysis,
@@ -676,15 +551,21 @@ def generate_word_package(
 
     number = safe_component(bundle.metadata.minute_number, "Minuta")
     docx_path = folder.document_dir / f"{number}.docx"
-    provider = get_document_provider(
-        str(config.get("document_provider", "ash_minutes_v1"))
-    )
+    provider = get_document_provider(str(config.get("document_provider", "ash_minutes_v1")))
     provider.generate(
         bundle.analysis,
         bundle.metadata,
         docx_path,
         config,
     )
+    if bool(config.get("generate_pdf", True)):
+        logo_path = config.get("logo_path")
+        generate_minute_pdf(
+            bundle.analysis,
+            bundle.metadata,
+            docx_path.with_suffix(".pdf"),
+            logo_path=logo_path,
+        )
     return docx_path, json_path, transcript_path, folder
 
 
@@ -695,7 +576,5 @@ def generate_word(
     config: dict,
     basename: str | None = None,
 ) -> tuple[Path, Path, Path]:
-    docx, json_path, transcript, _folder = generate_word_package(
-        bundle, output_dir, config
-    )
+    docx, json_path, transcript, _folder = generate_word_package(bundle, output_dir, config)
     return docx, json_path, transcript

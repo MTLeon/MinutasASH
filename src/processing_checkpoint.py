@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Puntos de recuperación del análisis por bloques.
 
 Los checkpoints viven en datos privados del usuario y nunca se incluyen en el
@@ -7,18 +5,19 @@ instalador ni en GitHub. Permiten continuar después de timeout, cancelación o
 cierre inesperado sin repetir los bloques ya aprobados por el esquema JSON.
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from __future__ import annotations
+
 import json
-from pathlib import Path
 import shutil
+from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 from pydantic import ValidationError
 
-from src.models import ChunkAnalysis, MinuteAnalysis
+from src.models import ChunkAnalysis
 from src.runtime_paths import checkpoints_dir
-
 
 CHECKPOINT_FORMAT_VERSION = 1
 
@@ -38,12 +37,8 @@ class ProcessingCheckpoint:
     split_count: int = 0
     consolidation_levels: list[dict[str, Any]] = field(default_factory=list)
     status: str = "in_progress"
-    created_at: str = field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat()
-    )
-    updated_at: str = field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat()
-    )
+    created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
+    updated_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -66,7 +61,7 @@ class ProcessingCheckpoint:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "ProcessingCheckpoint":
+    def from_dict(cls, payload: dict[str, Any]) -> ProcessingCheckpoint:
         if int(payload.get("format_version", 0)) != CHECKPOINT_FORMAT_VERSION:
             raise ValueError("Formato de checkpoint no compatible.")
         return cls(
@@ -83,14 +78,13 @@ class ProcessingCheckpoint:
                 for key, value in dict(payload.get("durations") or {}).items()
             },
             retries={
-                str(key): int(value)
-                for key, value in dict(payload.get("retries") or {}).items()
+                str(key): int(value) for key, value in dict(payload.get("retries") or {}).items()
             },
             split_count=int(payload.get("split_count") or 0),
             consolidation_levels=list(payload.get("consolidation_levels") or []),
             status=str(payload.get("status") or "in_progress"),
-            created_at=str(payload.get("created_at") or datetime.now(timezone.utc).isoformat()),
-            updated_at=str(payload.get("updated_at") or datetime.now(timezone.utc).isoformat()),
+            created_at=str(payload.get("created_at") or datetime.now(UTC).isoformat()),
+            updated_at=str(payload.get("updated_at") or datetime.now(UTC).isoformat()),
         )
 
     @property
@@ -131,7 +125,7 @@ class ProcessingCheckpointStore:
         return checkpoint
 
     def save(self, checkpoint: ProcessingCheckpoint) -> Path:
-        checkpoint.updated_at = datetime.now(timezone.utc).isoformat()
+        checkpoint.updated_at = datetime.now(UTC).isoformat()
         path = self.path_for(checkpoint.key)
         temporary = path.with_suffix(".json.tmp")
         temporary.write_text(
@@ -159,11 +153,11 @@ class ProcessingCheckpointStore:
         return count
 
     def prune(self, retention_days: int = 14) -> int:
-        cutoff = datetime.now(timezone.utc) - timedelta(days=max(retention_days, 1))
+        cutoff = datetime.now(UTC) - timedelta(days=max(retention_days, 1))
         removed = 0
         for path in self.root.glob("*.json"):
             try:
-                modified = datetime.fromtimestamp(path.stat().st_mtime, timezone.utc)
+                modified = datetime.fromtimestamp(path.stat().st_mtime, UTC)
                 if modified < cutoff:
                     path.unlink()
                     removed += 1
@@ -171,7 +165,7 @@ class ProcessingCheckpointStore:
                 continue
         for path in self.root.glob("*.invalid"):
             try:
-                modified = datetime.fromtimestamp(path.stat().st_mtime, timezone.utc)
+                modified = datetime.fromtimestamp(path.stat().st_mtime, UTC)
                 if modified < cutoff:
                     path.unlink()
                     removed += 1

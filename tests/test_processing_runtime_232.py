@@ -50,14 +50,16 @@ class ProcessingRuntime232Tests(unittest.TestCase):
             snapshot=snapshot,
         )
         self.assertEqual(plan.effective_profile.profile_id, "precise")
-        self.assertEqual(plan.effective_profile.context_length, 8192)
+        self.assertEqual(plan.effective_profile.context_length, 12288)
 
     def test_adaptive_timeout_increases_on_retry_and_memory_pressure(self) -> None:
         profile = PROFILE_PRESETS["fast"]
         healthy = ResourceSnapshot(16 * 1024**3, 8 * 1024**3, 50.0, 0.0)
         pressured = ResourceSnapshot(16 * 1024**3, 600 * 1024**2, 96.0, 0.0)
         first = adaptive_timeout_seconds(profile, profile.chunk_chars, {}, snapshot=healthy)
-        retry = adaptive_timeout_seconds(profile, profile.chunk_chars, {}, attempt=2, snapshot=pressured)
+        retry = adaptive_timeout_seconds(
+            profile, profile.chunk_chars, {}, attempt=2, snapshot=pressured
+        )
         self.assertGreater(retry, first)
 
     def test_split_text_chunk_keeps_complete_lines(self) -> None:

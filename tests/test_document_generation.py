@@ -1,11 +1,10 @@
-from pathlib import Path
 import tempfile
 import unittest
+from pathlib import Path
 
-from src.docx_writer_ash import generate_ash_docx
 from src.document_validator import validate_generated_docx
+from src.docx_writer_ash import generate_ash_docx
 from src.models import Attendee, MeetingItem, MeetingMetadata, MinuteAnalysis
-
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -22,9 +21,7 @@ class DocumentGenerationTests(unittest.TestCase):
             client="Cliente",
             minute_taker="Ana Pérez",
             minute_taker_date="2026-07-30",
-            attendees=[
-                Attendee(id=1, initials="AP", name="Ana Pérez", organization="ASH")
-            ],
+            attendees=[Attendee(id=1, initials="AP", name="Ana Pérez", organization="ASH")],
         )
         analysis = MinuteAnalysis(
             executive_summary="Prueba",
@@ -65,18 +62,20 @@ class DocumentGenerationTests(unittest.TestCase):
             minute_taker_date="2026-07-30",
             attendees=[Attendee(id=1, initials="AP", name="Ana Pérez", organization="ASH")],
         )
-        analysis = MinuteAnalysis(items=[
-            MeetingItem(
-                category="acuerdo",
-                description="Punto aprobado.",
-                review_status="aprobado",
-            ),
-            MeetingItem(
-                category="informativo",
-                description="Punto descartado.",
-                review_status="descartado",
-            ),
-        ])
+        analysis = MinuteAnalysis(
+            items=[
+                MeetingItem(
+                    category="acuerdo",
+                    description="Punto aprobado.",
+                    review_status="aprobado",
+                ),
+                MeetingItem(
+                    category="informativo",
+                    description="Punto descartado.",
+                    review_status="descartado",
+                ),
+            ]
+        )
         with tempfile.TemporaryDirectory() as tmp:
             output = Path(tmp) / "minuta.docx"
             generate_ash_docx(analysis, metadata, output, ROOT / "assets" / "logo_ash.png")

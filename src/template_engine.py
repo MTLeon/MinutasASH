@@ -1,23 +1,22 @@
 from __future__ import annotations
 
-from copy import deepcopy
-from datetime import datetime
 import hashlib
-from pathlib import Path
 import re
 import shutil
-from typing import Iterable
+from collections.abc import Iterable
+from copy import deepcopy
+from datetime import datetime
+from pathlib import Path
 
 from docx import Document
 from docx.document import Document as DocumentObject
-from docx.table import _Row, Table
+from docx.table import Table, _Row
 from docx.text.paragraph import Paragraph
 
 from src.catalog_models import TemplateManifest, TemplateValidation
 from src.document_validator import validate_generated_docx
 from src.models import MeetingMetadata, MinuteAnalysis
 from src.runtime_paths import templates_dir
-
 
 SCALAR_MARKERS: dict[str, str] = {
     "NUMERO_MINUTA": "minute_number",
@@ -58,8 +57,7 @@ def sha256_file(path: str | Path) -> str:
 
 
 def _iter_paragraphs(container) -> Iterable[Paragraph]:
-    for paragraph in container.paragraphs:
-        yield paragraph
+    yield from container.paragraphs
     for table in container.tables:
         for row in table.rows:
             for cell in row.cells:
@@ -109,7 +107,7 @@ def validate_template(
             warnings=["El archivo debe existir y utilizar extensión .docx."],
         )
     try:
-        document = Document(template_path)
+        document = Document(str(template_path))
     except Exception as exc:
         return TemplateValidation(valid=False, warnings=[f"Word no pudo abrir la plantilla: {exc}"])
 
@@ -130,8 +128,10 @@ def validate_template(
         warnings.append("La plantilla no contiene una sección de página válida.")
     if not document.tables:
         warnings.append("La plantilla no contiene tablas; revise el formato corporativo.")
-    valid = not missing and not unknown and all(
-        table_counts.get(marker, 0) == 1 for marker in TABLE_MARKERS
+    valid = (
+        not missing
+        and not unknown
+        and all(table_counts.get(marker, 0) == 1 for marker in TABLE_MARKERS)
     )
     return TemplateValidation(
         valid=valid,
@@ -231,10 +231,22 @@ def _item_values(analysis: MinuteAnalysis, column_count: int) -> list[list[str]]
     rows: list[list[str]] = []
     active = [item for item in analysis.items if item.review_status != "descartado"]
     for index, item in enumerate(active, start=1):
-        responsible = item.responsible or ("Informativo" if item.category in {"informativo", "acuerdo"} else "Por confirmar")
-        due = item.due_date_text or item.due_date_iso or ("N.A." if item.category in {"informativo", "acuerdo", "pendiente"} else "Por confirmar")
+        responsible = item.responsible or (
+            "Informativo" if item.category in {"informativo", "acuerdo"} else "Por confirmar"
+        )
+        due = (
+            item.due_date_text
+            or item.due_date_iso
+            or (
+                "N.A."
+                if item.category in {"informativo", "acuerdo", "pendiente"}
+                else "Por confirmar"
+            )
+        )
         description = item.description
-        if item.project_code and not description.casefold().startswith(f"proyecto {item.project_code}".casefold()):
+        if item.project_code and not description.casefold().startswith(
+            f"proyecto {item.project_code}".casefold()
+        ):
             description = f"Proyecto {item.project_code} — {description}"
         if item.category == "pendiente" and not description.lower().startswith("pendiente"):
             description = "Pendiente: " + description
@@ -283,24 +295,29 @@ def render_template_document(
     if not validation.valid:
         raise ValueError(
             "La plantilla seleccionada dejó de ser válida: "
-            + "; ".join(validation.missing_required + validation.unknown_markers + validation.warnings)
+            + "; ".join(
+                validation.missing_required + validation.unknown_markers + validation.warnings
+            )
         )
-    document = Document(template_path)
+    document = Document(str(template_path))
     values = metadata.model_dump()
     values["document_date"] = _format_date(metadata.document_date)
     values["meeting_date"] = _format_date(metadata.meeting_date)
     values["minute_taker_date"] = _format_date(metadata.minute_taker_date)
     values["approval_date"] = _format_date(metadata.approval_date)
     replacements = {
-        marker: str(values.get(field) or "")
-        for marker, field in SCALAR_MARKERS.items()
+        marker: str(values.get(field) or "") for marker, field in SCALAR_MARKERS.items()
     }
     for part in _all_story_parts(document):
         for paragraph in _iter_paragraphs(part):
             _replace_paragraph_text(paragraph, replacements)
 
-    attendee_rows = _attendee_values(metadata, len(_find_table_marker_rows(document)["TABLA_ASISTENTES"][0][1].cells))
-    item_rows = _item_values(analysis, len(_find_table_marker_rows(document)["TABLA_ACUERDOS"][0][1].cells))
+    attendee_rows = _attendee_values(
+        metadata, len(_find_table_marker_rows(document)["TABLA_ASISTENTES"][0][1].cells)
+    )
+    item_rows = _item_values(
+        analysis, len(_find_table_marker_rows(document)["TABLA_ACUERDOS"][0][1].cells)
+    )
     _replace_table_marker(document, "TABLA_ASISTENTES", attendee_rows)
     _replace_table_marker(document, "TABLA_ACUERDOS", item_rows)
 
@@ -313,7 +330,7 @@ def render_template_document(
         f"Plantilla {metadata.template_key or 'administrada'} "
         f"versión {metadata.template_version or 'sin versión'}"
     )
-    document.save(output)
+    document.save(str(output))
     validate_generated_docx(output, metadata, analysis, minimum_tables=2)
     return output
 
@@ -336,17 +353,50 @@ def create_test_metadata() -> tuple[MeetingMetadata, MinuteAnalysis]:
         approved_by="Aprobador de prueba",
         approval_date="2026-07-31",
         attendees=[
-            Attendee(initials="UP", name="Usuario de prueba", email="usuario@ash.cl", role="Ingeniero", organization="ASH"),
-            Attendee(initials="CP", name="Contacto de prueba", email="contacto@cliente.cl", role="Especialista", organization="Cliente"),
+            Attendee(
+                initials="UP",
+                name="Usuario de prueba",
+                email="usuario@ash.cl",
+                role="Ingeniero",
+                organization="ASH",
+            ),
+            Attendee(
+                initials="CP",
+                name="Contacto de prueba",
+                email="contacto@cliente.cl",
+                role="Especialista",
+                organization="Cliente",
+            ),
         ],
     )
     analysis = MinuteAnalysis(
         objective="Validar el formato documental.",
         executive_summary="Se verificó la construcción de la plantilla.",
         items=[
-            MeetingItem(category="informativo", description="Se presentó el alcance de la reunión.", review_status="aprobado", origin="manual", confidence=1.0),
-            MeetingItem(category="compromiso", description="ASH enviará los planos actualizados.", responsible="Usuario de prueba", due_date_text="viernes 7 de agosto", review_status="aprobado", origin="manual", confidence=1.0),
-            MeetingItem(category="pendiente", description="Confirmar el número de señales analógicas.", responsible="Contacto de prueba", review_status="aprobado", origin="manual", confidence=1.0),
+            MeetingItem(
+                category="informativo",
+                description="Se presentó el alcance de la reunión.",
+                review_status="aprobado",
+                origin="manual",
+                confidence=1.0,
+            ),
+            MeetingItem(
+                category="compromiso",
+                description="ASH enviará los planos actualizados.",
+                responsible="Usuario de prueba",
+                due_date_text="viernes 7 de agosto",
+                review_status="aprobado",
+                origin="manual",
+                confidence=1.0,
+            ),
+            MeetingItem(
+                category="pendiente",
+                description="Confirmar el número de señales analógicas.",
+                responsible="Contacto de prueba",
+                review_status="aprobado",
+                origin="manual",
+                confidence=1.0,
+            ),
         ],
     )
     return metadata, analysis

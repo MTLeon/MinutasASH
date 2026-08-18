@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import contextlib
+import json
+from collections.abc import Callable
 from threading import Event, Lock, Thread
 from time import monotonic
-from typing import Any, Callable, Type, TypeVar
-import json
+from typing import Any, TypeVar
 
 import requests
 from pydantic import BaseModel, ValidationError
 
+from src.providers.structured_validation import validate_model_json
 
 T = TypeVar("T", bound=BaseModel)
 TelemetryCallback = Callable[[dict[str, Any]], None]
@@ -139,11 +142,9 @@ class OllamaClient:
             **self._operation,
             **payload,
         }
-        try:
+        # La telemetría es observacional: nunca debe abortar la transcripción o el análisis.
+        with contextlib.suppress(Exception):
             self._telemetry(event)
-        except Exception:
-            # La telemetría no puede interrumpir el procesamiento principal.
-            pass
 
     def list_models(self) -> list[str]:
         try:
@@ -155,9 +156,7 @@ class OllamaClient:
                 "Use la opción 'Reparar componentes' en Configuración."
             ) from exc
         return sorted(
-            model.get("name")
-            for model in response.json().get("models", [])
-            if model.get("name")
+            model.get("name") for model in response.json().get("models", []) if model.get("name")
         )
 
     def check_connection(self) -> None:
@@ -317,9 +316,7 @@ class OllamaClient:
                 )
             content = "".join(content_parts)
             if not content:
-                raise LocalEngineError(
-                    "El motor local no entregó contenido para validar."
-                )
+                raise LocalEngineError("El motor local no entregó contenido para validar.")
             self._emit(
                 "request_finished",
                 elapsed_seconds=monotonic() - started,
@@ -349,11 +346,12 @@ class OllamaClient:
                     "Se conservarán los bloques completados y se intentará dividirlo."
                 ) from exc
             detail = ""
-            if getattr(exc, "response", None) is not None:
+            error_response = getattr(exc, "response", None)
+            if error_response is not None:
                 try:
-                    detail = f" Detalle: {exc.response.json().get('error', '')}"
+                    detail = f" Detalle: {error_response.json().get('error', '')}"
                 except Exception:
-                    detail = f" Detalle HTTP: {exc.response.text[:500]}"
+                    detail = f" Detalle HTTP: {error_response.text[:500]}"
             self._emit(
                 "request_error",
                 elapsed_seconds=monotonic() - started,
@@ -377,7 +375,7 @@ class OllamaClient:
         self,
         system_prompt: str,
         user_prompt: str,
-        response_model: Type[T],
+        response_model: type[T],
     ) -> T:
         schema = response_model.model_json_schema()
         base_messages = [
@@ -417,12 +415,10 @@ class OllamaClient:
             last_content, metrics = self._stream_chat(payload)
 
             try:
-                return response_model.model_validate_json(last_content)
+                return validate_model_json(last_content, response_model)
             except ValidationError as exc:
                 last_validation_error = exc
-                last_was_truncated = _validation_indicates_truncation(
-                    last_content, exc, metrics
-                )
+                last_was_truncated = _validation_indicates_truncation(last_content, exc, metrics)
                 self._emit(
                     "schema_validation_failed",
                     attempt=attempt + 1,

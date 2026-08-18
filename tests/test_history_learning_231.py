@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
-import unittest
 from unittest.mock import patch
 
 from src.database import AppDatabase
@@ -11,7 +11,15 @@ from src.models import MeetingMetadata, MinuteAnalysis
 
 
 class HistoryAndLearning231Tests(unittest.TestCase):
-    def _save(self, db: AppDatabase, root: Path, *, number: str | None, is_test: bool = False, with_artifacts: bool = False):
+    def _save(
+        self,
+        db: AppDatabase,
+        root: Path,
+        *,
+        number: str | None,
+        is_test: bool = False,
+        with_artifacts: bool = False,
+    ):
         source = root / f"source_{number or 'draft'}.txt"
         source.write_text("Mauricio: Yo enviaré el informe.", encoding="utf-8")
         output = root / f"meeting_{number or 'draft'}"
@@ -66,8 +74,11 @@ class HistoryAndLearning231Tests(unittest.TestCase):
             meeting_id = self._save(db, root, number="3261-MRE-PR-01", with_artifacts=True)
             service = HistoryService(db)
             fake_trash = root / "trash"
-            with patch("src.history_service.trash_dir", return_value=fake_trash), patch(
-                "src.history_service.default_output_dir", return_value=root / "common-output"
+            with (
+                patch("src.history_service.trash_dir", return_value=fake_trash),
+                patch(
+                    "src.history_service.default_output_dir", return_value=root / "common-output"
+                ),
             ):
                 destination = service.move_to_trash(meeting_id, "Prueba")
                 self.assertIsNotNone(destination)

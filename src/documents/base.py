@@ -16,5 +16,4 @@ class DocumentProvider(Protocol):
         metadata: MeetingMetadata,
         output_path: Path,
         config: dict,
-    ) -> Path:
-        ...
+    ) -> Path: ...

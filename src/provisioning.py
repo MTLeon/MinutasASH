@@ -1,13 +1,14 @@
 from __future__ import annotations
 
-from datetime import datetime
+import contextlib
 import json
-from pathlib import Path
 import queue
 import shutil
 import threading
 import tkinter as tk
+from datetime import datetime
 from tkinter import messagebox, ttk
+from typing import cast
 
 from src.ollama_client import OllamaClient
 from src.ollama_manager import (
@@ -25,6 +26,7 @@ from src.runtime_paths import (
     user_data_root,
 )
 from src.settings import load_settings_dict, read_default_settings
+from src.storage_policy import local_runtime_required, required_free_space_bytes
 from src.ui_state import configure_resizable_window
 
 
@@ -38,6 +40,8 @@ def read_default_config() -> dict:
 
 def setup_is_complete(config: dict | None = None) -> bool:
     config = config or load_settings_dict()
+    if not local_runtime_required(config):
+        return True
     state = setup_state_path()
     if not state.exists():
         return False
@@ -50,10 +54,7 @@ def setup_is_complete(config: dict | None = None) -> bool:
     if not bool(payload.get("completed", True)):
         return False
     runtime_mode = str(config.get("runtime_mode", "auto"))
-    # No se inicia Ollama durante el arranque de la interfaz. La preparación ya
-    # fue validada al escribir setup_state y el servicio se levanta bajo demanda
-    # al comenzar un análisis. Esto evita ventanas de consola y demoras antes de
-    # que el usuario vea la aplicación.
+    # La comprobación de inicio no levanta procesos externos; Ollama se inicia al procesar.
     return find_ollama_executable(runtime_mode) is not None
 
 
@@ -91,11 +92,11 @@ class ProvisioningWizard(tk.Tk):
         self.running = False
 
         self.title("Configuración inicial de Minutas ASH")
-        try:
+        with contextlib.suppress(tk.TclError, OSError):
             self.iconbitmap(str(resource_path("assets/ash.ico")))
-        except (tk.TclError, OSError):
-            pass
-        configure_resizable_window(self, None, "provisioning", "720x520", (640, 440), transient=False)
+        configure_resizable_window(
+            self, None, "provisioning", "720x520", (640, 440), transient=False
+        )
         self.protocol("WM_DELETE_WINDOW", self._close)
 
         style = ttk.Style(self)
@@ -111,6 +112,7 @@ class ProvisioningWizard(tk.Tk):
         header = ttk.Frame(outer)
         header.pack(fill="x")
         logo = resource_path("assets/logo_ash.png")
+        self.logo_image: tk.PhotoImage | None
         try:
             self.logo_image = tk.PhotoImage(file=str(logo)).subsample(3, 3)
             ttk.Label(header, image=self.logo_image).pack(side="left", padx=(0, 16))
@@ -198,8 +200,23 @@ class ProvisioningWizard(tk.Tk):
                 model = str(self.config_data.get("model", "qwen3:8b"))
                 runtime_mode = str(self.config_data.get("runtime_mode", "auto"))
 
+                if not local_runtime_required(self.config_data):
+                    write_setup_state(self.config_data)
+                    self.worker_queue.put(("complete", None))
+                    return
+
+                api_ready = api_available(base_url)
+                model_installed = False
+                if api_ready:
+                    probe = OllamaClient(base_url, model)
+                    model_installed = model in probe.list_models()
+
                 free_bytes = shutil.disk_usage(user_data_root()).free
-                required_bytes = int(self.config_data.get("minimum_free_space_bytes", 12 * 1024**3))
+                required_bytes = required_free_space_bytes(
+                    self.config_data,
+                    api_ready=api_ready,
+                    model_installed=model_installed,
+                )
                 if free_bytes < required_bytes:
                     raise ProvisioningError(
                         "No hay espacio suficiente para completar la preparación. "
@@ -207,7 +224,7 @@ class ProvisioningWizard(tk.Tk):
                         f"{free_bytes / 1024**3:.1f} GB disponibles."
                     )
 
-                if not api_available(base_url):
+                if not api_ready:
                     self.worker_queue.put(("status", (5, "Preparando componentes locales...")))
 
                     def runtime_progress(value: int, text: str) -> None:
@@ -237,23 +254,26 @@ class ProvisioningWizard(tk.Tk):
                     model,
                     int(self.config_data.get("timeout_seconds", 1200)),
                     float(self.config_data.get("temperature", 0.05)),
-                    int(self.config_data.get("context_length", 6144)),
-                    str(self.config_data.get("keep_alive", "2m")),
-                    int(self.config_data.get("ollama_max_output_tokens", 900)),
-                    int(self.config_data.get("ollama_consolidation_output_tokens", 1200)),
-                    int(self.config_data.get("ollama_recovery_output_tokens", 700)),
+                    int(self.config_data.get("context_length", 8192)),
+                    str(self.config_data.get("keep_alive", "30m")),
                 )
                 installed = client.list_models()
                 if model not in installed:
-                    self.worker_queue.put(("status", (35, "Descargando perfil de procesamiento...")))
-                    self.worker_queue.put(("log", "Descarga inicial en curso. No cierre esta ventana."))
+                    self.worker_queue.put(
+                        ("status", (35, "Descargando perfil de procesamiento..."))
+                    )
+                    self.worker_queue.put(
+                        ("log", "Descarga inicial en curso. No cierre esta ventana.")
+                    )
 
                     def model_progress(value: int, _text: str) -> None:
                         mapped = 35 + int(value * 0.57)
-                        self.worker_queue.put((
-                            "status",
-                            (mapped, f"Preparando perfil de procesamiento... {value}%"),
-                        ))
+                        self.worker_queue.put(
+                            (
+                                "status",
+                                (mapped, f"Preparando perfil de procesamiento... {value}%"),
+                            )
+                        )
 
                     pull_model_stream(
                         base_url,
@@ -277,7 +297,7 @@ class ProvisioningWizard(tk.Tk):
             while True:
                 kind, payload = self.worker_queue.get_nowait()
                 if kind == "status":
-                    value, text = payload
+                    value, text = cast(tuple[int, str], payload)
                     self.progress_var.set(int(value))
                     self.status_var.set(str(text))
                 elif kind == "log":
@@ -290,7 +310,9 @@ class ProvisioningWizard(tk.Tk):
                     )
                     self.result_code = 0
                     self.running = False
-                    self.cancel_button.configure(text="Finalizar", state="normal", command=self._finish)
+                    self.cancel_button.configure(
+                        text="Finalizar", state="normal", command=self._finish
+                    )
                     self.start_button.pack_forget()
                     if self.launch_after:
                         self.after(900, self._finish)

@@ -5,8 +5,37 @@ from typing import Literal
 
 from src.models import MeetingItem
 
-
 QualityLevel = Literal["verde", "amarillo", "rojo", "descartado"]
+
+_AMBIGUOUS_RESPONSIBLES = frozenset(
+    {"todos", "equipo", "por confirmar", "por definir", "no definido", "n/a", "alguien"}
+)
+_AMBIGUOUS_DUE_TERMS = frozenset(
+    {
+        "pronto",
+        "a la brevedad",
+        "lo antes posible",
+        "más tarde",
+        "mas tarde",
+        "cuando se pueda",
+        "eventualmente",
+    }
+)
+_VAGUE_DESCRIPTION_TERMS = frozenset(
+    {
+        "revisar tema",
+        "tema importante",
+        "ver esto",
+        "revisar esto",
+        "dar seguimiento",
+        "hacer seguimiento",
+        "asunto pendiente",
+    }
+)
+
+
+def _normalized(value: str | None) -> str:
+    return " ".join((value or "").casefold().split())
 
 
 @dataclass(frozen=True)
@@ -40,15 +69,30 @@ def assess_item(item: MeetingItem) -> ItemAssessment:
     origin = getattr(item, "origin", "modelo")
     if origin == "regla":
         reasons.append("Recuperado por el control de cobertura.")
+    elif origin == "importado":
+        reasons.append("Sugerido desde una minuta anterior; confirme que siga vigente.")
     if item.confidence < 0.70:
         reasons.append("Confianza de extracción baja.")
     if item.category == "compromiso":
+        responsible = _normalized(item.responsible)
+        due_text = _normalized(item.due_date_text)
+        description = _normalized(item.description)
         if not item.responsible:
             reasons.append("Falta confirmar responsable.")
+        elif responsible in _AMBIGUOUS_RESPONSIBLES:
+            reasons.append(
+                "El responsable es colectivo o ambiguo; confirme una persona responsable."
+            )
         if not (item.due_date_text or item.due_date_iso):
             reasons.append("Falta confirmar plazo.")
+        elif not item.due_date_iso and any(term in due_text for term in _AMBIGUOUS_DUE_TERMS):
+            reasons.append("El plazo es ambiguo; confirme una fecha o condición concreta.")
+        if any(term in description for term in _VAGUE_DESCRIPTION_TERMS):
+            reasons.append("La descripción es vaga; concrete la acción o el resultado esperado.")
     if not item.evidence:
         reasons.append("No posee referencia temporal.")
+    elif item.evidence_verified is False:
+        reasons.append("La referencia temporal no respalda claramente el punto.")
 
     if status != "aprobado" and (origin == "regla" or item.confidence < 0.70):
         return ItemAssessment("rojo", "Revisión prioritaria", tuple(reasons))
@@ -60,7 +104,9 @@ def assess_item(item: MeetingItem) -> ItemAssessment:
         )
     if status == "aprobado":
         return ItemAssessment("verde", "Aprobado", ())
-    return ItemAssessment("amarillo", "Pendiente de aprobación", ("El punto aún no ha sido aprobado.",))
+    return ItemAssessment(
+        "amarillo", "Pendiente de aprobación", ("El punto aún no ha sido aprobado.",)
+    )
 
 
 def summarize_review(items: list[MeetingItem]) -> ReviewSummary:

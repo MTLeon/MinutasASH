@@ -1,68 +1,57 @@
-# Minutas ASH 2.3.5
+# Minutas ASH 2.3.7
 
-Aplicación de escritorio para convertir transcripciones y notas de reunión en minutas corporativas trazables, revisables y exportables a Word.
+Aplicación de escritorio para convertir transcripciones, documentos, audio, video y notas de reunión en minutas corporativas trazables, revisables y exportables.
 
-## Enfoque de esta versión
+## Funciones principales
 
-La versión 2.3.5 es un hotfix de estabilidad para el procesamiento local y la experiencia del usuario final:
+- Entrada unificada para VTT, SRT, TXT, DOCX, PDF, texto pegado, audio y video.
+- Procesamiento local con Ollama o remoto mediante proveedores configurables.
+- Whisper opcional, cola recuperable, carpeta vigilada y detección por hash.
+- Extracción estructurada de decisiones, compromisos, riesgos y pendientes con evidencia.
+- Revisión asistida, acciones masivas, historial, papelera y aprendizaje controlado.
+- Productividad mediante atajos, selección múltiple por teclado o arrastre, búsqueda, ordenamiento y deshacer.
+- Exportación DOCX/PDF, diagnóstico protegido y observabilidad operativa.
 
-- la interfaz ya no inicia Ollama durante la apertura; el servicio se levanta bajo demanda al comenzar el análisis;
-- las llamadas externas de Ollama usan una configuración única de Windows para ocultar la consola;
-- se impiden arranques simultáneos del servicio local;
-- una respuesta JSON cortada aumenta automáticamente su presupuesto de salida;
-- si el JSON continúa incompleto, el bloque se divide y el procesamiento sigue usando los checkpoints existentes;
-- el perfil preventivo nunca se eleva de Rápido a Equilibrado durante la misma ejecución;
-- los mensajes de actividad distinguen entre timeout y respuesta estructurada incompleta;
-- se mantienen todas las mejoras de memoria, limpieza de VTT y revisión masiva introducidas en 2.3.4.
-
-## Ejecución desde código fuente
+## Inicio para desarrollo
 
 ```powershell
-python -m pip install -r requirements.txt
-python -m src.main
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+.\.venv\Scripts\python.exe -m src.gui
 ```
 
-Para desarrollo y pruebas:
+## Calidad
 
 ```powershell
-python -m pip install -r requirements-dev.txt
-python -m compileall -q src tests
-python -m pytest -q
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\Quality.ps1
 ```
 
-## Construcción en Windows
+La entrega 2.3.7 incorpora 257 pruebas, cobertura mínima de 70 %, análisis de tipos, lint, 75 escenarios visuales, smoke de instalación limpia y smoke de actualización desde 2.3.6.
 
-Ejecute `CONSTRUIR_INSTALADOR_FINAL.bat`. El proyecto está configurado para producir:
+## Construcción Windows
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File build_tools\Build-Complete-Installer.ps1
+```
+
+Artefactos locales, no versionados:
 
 ```text
-dist_installer\MinutasASH_Setup_2.3.5_Online.exe
-dist_installer\MinutasASH_Setup_2.3.5_Online_SHA256.txt
+dist_installer\MinutasASH_Setup_2.3.7_Online.exe
+dist_installer\MinutasASH_Whisper_CPU_2.3.7.exe
 ```
 
-El instalador debe validarse en Windows 11 antes de distribución productiva.
+## Documentación
 
-## Documentación principal
+- [Índice documental](docs/README.md)
+- [Manual maestro](docs/Manual_Maestro_2.3.3.md)
+- [Manual de usuario](docs/Manual_Usuario_2.3.3.md)
+- [Configuración](docs/Manual_Configuracion_2.3.3.md)
+- [Programación y depuración](docs/Manual_Programador_2.3.3.md)
+- [Atajos y productividad 2.3.4](docs/QOL_TECLADO_Y_TABLAS_2.3.4.md)
+- [Notas 2.3.7](docs/NOTAS_VERSION_2.3.7.md)
+- [Validación 2.3.7](docs/VALIDACION_2.3.7.md)
 
-La documentación funcional 2.3.4 continúa vigente y se complementa con el hotfix:
+## Privacidad
 
-- `docs/NOTAS_VERSION_2.3.5.md`
-- `VALIDACION_2.3.5.md`
-- `docs/Manual_Maestro_2.3.4.md`
-- `docs/Manual_Usuario_2.3.4.md`
-- `docs/Manual_Configuracion_2.3.4.md`
-- `docs/Manual_Programador_2.3.4.md`
-- `docs/PROCESAMIENTO_RESILIENTE_2.3.4.md`
-- `docs/QOL_REVISION_VENTANAS_2.3.4.md`
-- `docs/PRUEBA_PILOTO_WINDOWS11_2.3.4.md`
-
-## Repositorio GitHub
-
-Esta línea está preparada para un repositorio **privado**. Incluye validación automática en Windows, construcción del instalador, plantillas de Issues y Pull Requests y actualización controlada de dependencias.
-
-Para iniciar el repositorio mediante GitHub CLI:
-
-```powershell
-.\scripts\Inicializar-Repositorio-GitHub.ps1 -RepositoryName MinutasASH -CreateRemote
-```
-
-Consulte `docs/GITHUB_GUIA_2.3.4.md`; la estrategia de ramas y protección de `main` no cambia en 2.3.5.
+No incluya transcripciones reales, bases de datos, checkpoints, documentos de clientes, diagnósticos, modelos, respaldos, credenciales ni certificados en GitHub. Los fixtures deben ser sintéticos o anonimizados.

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
-import unittest
 from unittest.mock import patch
 
 from docx import Document
@@ -10,9 +10,13 @@ from docx import Document
 from src.catalog_models import TemplateManifest
 from src.database import AppDatabase
 from src.documents.registry import get_document_provider
-from src.template_engine import create_test_metadata, render_template_document, sha256_file, validate_template
+from src.template_engine import (
+    create_test_metadata,
+    render_template_document,
+    sha256_file,
+    validate_template,
+)
 from src.template_service import TemplateService
-
 
 ROOT = Path(__file__).resolve().parents[1]
 SAMPLE = ROOT / "plantillas" / "Plantilla_Marcadores_ASH_2.3.docx"
@@ -33,10 +37,7 @@ class TemplateEngine23Tests(unittest.TestCase):
                 tables.extend(section.header.tables)
                 tables.extend(section.footer.tables)
             text = "\n".join(
-                cell.text
-                for table in tables
-                for row in table.rows
-                for cell in row.cells
+                cell.text for table in tables for row in table.rows for cell in row.cells
             )
             self.assertIn("P0000-MRE-PR-00", text)
             self.assertIn("ASH enviará los planos actualizados", text)

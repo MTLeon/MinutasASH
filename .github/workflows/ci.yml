@@ -1,54 +1,56 @@
-name: Validación continua
+name: CI
 
 on:
   push:
     branches: [main, develop]
   pull_request:
     branches: [main, develop]
-  workflow_dispatch:
 
 permissions:
   contents: read
 
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  pruebas-windows:
-    name: Python 3.12 / Windows
-    runs-on: windows-latest
-    timeout-minutes: 20
+  tests:
+    name: Tests Python ${{ matrix.python-version }} / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+        python-version: ["3.12", "3.13", "3.14"]
 
     steps:
-      - name: Descargar repositorio
-        uses: actions/checkout@v4
+      - name: Descargar código
+        uses: actions/checkout@v6
 
       - name: Configurar Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
           cache: pip
-          cache-dependency-path: |
-            requirements.txt
-            requirements-dev.txt
 
       - name: Instalar dependencias
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements-dev.txt
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements-dev.txt
 
-      - name: Verificar sintaxis
+      - name: Comprobar sintaxis
         run: python -m compileall -q src tests
 
-      - name: Ejecutar pruebas
-        run: python -m pytest -q --cov=src --cov-report=term-missing --cov-report=xml
+      - name: Formato
+        run: python -m ruff format --check .
 
-      - name: Guardar cobertura
-        if: always()
+      - name: Ruff
+        run: python -m ruff check .
+
+      - name: Tipos
+        run: python -m mypy src
+
+      - name: Pruebas y cobertura
+        run: python -m pytest --cov=src --cov-report=term-missing --cov-report=xml
+
+      - name: Publicar cobertura
+        if: always() && matrix.os == 'windows-latest' && matrix.python-version == '3.14'
         uses: actions/upload-artifact@v4
         with:
-          name: cobertura-python-${{ github.run_number }}
+          name: coverage-xml
           path: coverage.xml
-          if-no-files-found: ignore
           retention-days: 14

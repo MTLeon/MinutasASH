@@ -1,20 +1,18 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
 import hashlib
 import json
 import os
-from pathlib import Path
 import re
 import subprocess
-import tempfile
-from typing import Callable
+from collections.abc import Callable
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import requests
 
 from src.runtime_paths import user_data_root
-
 
 ProgressCallback = Callable[[int, str], None]
 
@@ -33,6 +31,7 @@ class UpdateInfo:
     published_at: str | None = None
     source: str = "manifest"
     release_sequence: int | None = None
+    installer_parts: tuple[str, ...] = ()
 
 
 def _version_tuple(value: str) -> tuple[int, ...]:
@@ -56,7 +55,9 @@ def is_newer_version(
     current_sequence: int | None = None,
 ) -> bool:
     if candidate_sequence is not None or current_sequence is not None:
-        left = int(candidate_sequence if candidate_sequence is not None else version_sequence(candidate))
+        left = int(
+            candidate_sequence if candidate_sequence is not None else version_sequence(candidate)
+        )
         right = int(current_sequence if current_sequence is not None else version_sequence(current))
         return left > right
     return _version_tuple(candidate) > _version_tuple(current)
@@ -116,7 +117,9 @@ def check_manifest(manifest_url: str, channel: str = "stable") -> UpdateInfo:
         mandatory=bool(data.get("mandatory", False)),
         published_at=str(data.get("published_at") or "") or None,
         source="manifest",
-        release_sequence=(int(data["release_sequence"]) if data.get("release_sequence") is not None else None),
+        release_sequence=(
+            int(data["release_sequence"]) if data.get("release_sequence") is not None else None
+        ),
     )
 
 
@@ -148,7 +151,8 @@ def check_github_release(
             raise UpdateError("GitHub devolvió un listado de releases inválido.")
         release = next(
             (
-                item for item in releases
+                item
+                for item in releases
                 if isinstance(item, dict)
                 and not item.get("draft")
                 and (allow_prerelease or not item.get("prerelease"))
@@ -166,18 +170,32 @@ def check_github_release(
     assets = release.get("assets") or []
     installer = next(
         (
-            asset for asset in assets
+            asset
+            for asset in assets
             if isinstance(asset, dict)
             and str(asset.get("name", "")).lower().endswith(".exe")
             and "minutasash_setup" in str(asset.get("name", "")).lower()
         ),
         None,
     )
-    if not installer:
+    parts: list[tuple[int, str]] = []
+    for asset in assets:
+        if not isinstance(asset, dict):
+            continue
+        name = str(asset.get("name", ""))
+        match = re.search(r"\.exe\.part(\d+)$", name, flags=re.IGNORECASE)
+        if match and "minutasash_setup" in name.lower():
+            url = str(asset.get("browser_download_url") or "")
+            if url.startswith("https://"):
+                parts.append((int(match.group(1)), url))
+    parts.sort(key=lambda item: item[0])
+    part_urls = tuple(url for _number, url in parts)
+    if not installer and not part_urls:
         raise UpdateError("La release no contiene el instalador de Minutas ASH.")
     checksum_asset = next(
         (
-            asset for asset in assets
+            asset
+            for asset in assets
             if isinstance(asset, dict)
             and "sha256" in str(asset.get("name", "")).lower()
             and str(asset.get("name", "")).lower().endswith((".txt", ".sha256"))
@@ -190,13 +208,14 @@ def check_github_release(
     version = str(release.get("tag_name") or release.get("name") or "").lstrip("v")
     return UpdateInfo(
         version=version,
-        installer_url=str(installer.get("browser_download_url")),
+        installer_url=(str(installer.get("browser_download_url")) if installer else part_urls[0]),
         sha256=sha256,
         release_notes=str(release.get("body") or ""),
         mandatory=False,
         published_at=str(release.get("published_at") or "") or None,
         source="github",
         release_sequence=None,
+        installer_parts=part_urls,
     )
 
 
@@ -216,7 +235,10 @@ def check_for_updates(settings: dict) -> UpdateInfo:
 def update_source_is_configured(settings: dict) -> bool:
     source = str(settings.get("update_source", "manifest"))
     if source == "github":
-        return bool(str(settings.get("github_owner", "")).strip() and str(settings.get("github_repo", "")).strip())
+        return bool(
+            str(settings.get("github_owner", "")).strip()
+            and str(settings.get("github_repo", "")).strip()
+        )
     return bool(str(settings.get("update_manifest_url", "")).strip())
 
 
@@ -233,11 +255,11 @@ def should_check_now(settings: dict) -> bool:
     try:
         moment = datetime.fromisoformat(last.replace("Z", "+00:00"))
         if moment.tzinfo is None:
-            moment = moment.replace(tzinfo=timezone.utc)
+            moment = moment.replace(tzinfo=UTC)
     except ValueError:
         return True
     hours = max(1, int(settings.get("update_check_interval_hours", 24)))
-    return datetime.now(timezone.utc) - moment >= timedelta(hours=hours)
+    return datetime.now(UTC) - moment >= timedelta(hours=hours)
 
 
 def download_update(
@@ -247,24 +269,33 @@ def download_update(
     progress = progress or (lambda _value, _text: None)
     updates_dir = user_data_root() / "updates"
     updates_dir.mkdir(parents=True, exist_ok=True)
-    filename = Path(info.installer_url.split("?", 1)[0]).name or f"MinutasASH_Setup_{info.version}.exe"
+    source_urls = info.installer_parts or (info.installer_url,)
+    source_name = Path(source_urls[0].split("?", 1)[0]).name
+    filename = re.sub(r"\.part\d+$", "", source_name, flags=re.IGNORECASE)
+    filename = filename or f"MinutasASH_Setup_{info.version}.exe"
     final_path = updates_dir / filename
     temporary = final_path.with_suffix(final_path.suffix + ".download")
     digest = hashlib.sha256()
     try:
-        with requests.get(info.installer_url, stream=True, timeout=(30, 300)) as response:
-            response.raise_for_status()
-            total = int(response.headers.get("content-length") or 0)
-            completed = 0
-            with temporary.open("wb") as handle:
-                for chunk in response.iter_content(chunk_size=1024 * 1024):
-                    if not chunk:
-                        continue
-                    handle.write(chunk)
-                    digest.update(chunk)
-                    completed += len(chunk)
-                    value = int(completed * 100 / total) if total else 0
-                    progress(value, f"Descargando actualización... {value}%" if total else "Descargando actualización...")
+        with temporary.open("wb") as handle:
+            for part_index, url in enumerate(source_urls, start=1):
+                with requests.get(url, stream=True, timeout=(30, 300)) as response:
+                    response.raise_for_status()
+                    total = int(response.headers.get("content-length") or 0)
+                    completed = 0
+                    for chunk in response.iter_content(chunk_size=1024 * 1024):
+                        if not chunk:
+                            continue
+                        handle.write(chunk)
+                        digest.update(chunk)
+                        completed += len(chunk)
+                        value = int(completed * 100 / total) if total else 0
+                        prefix = (
+                            f"Descargando parte {part_index}/{len(source_urls)}"
+                            if len(source_urls) > 1
+                            else "Descargando actualización"
+                        )
+                        progress(value, f"{prefix}... {value}%" if total else f"{prefix}...")
     except requests.RequestException as exc:
         temporary.unlink(missing_ok=True)
         raise UpdateError(f"No fue posible descargar la actualización: {exc}") from exc

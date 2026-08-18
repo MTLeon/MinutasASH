@@ -1,14 +1,11 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Iterable
 
 from docx import Document
-from docx.enum.section import WD_SECTION_START
+from docx.document import Document as DocxDocument
 from docx.enum.table import (
-    WD_ALIGN_VERTICAL,
     WD_CELL_VERTICAL_ALIGNMENT,
-    WD_ROW_HEIGHT_RULE,
     WD_TABLE_ALIGNMENT,
 )
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -18,7 +15,6 @@ from docx.shared import Inches, Pt, RGBColor
 
 from src.metadata import format_date
 from src.models import Attendee, MeetingItem, MeetingMetadata, MinuteAnalysis
-
 
 BLUE = "1F497D"
 FONT = "Segoe UI"
@@ -53,7 +49,10 @@ def _set_table_borders(table, color: str = BLUE, outer_size: int = 6, inner_size
             element = OxmlElement(tag)
             borders.append(element)
         element.set(qn("w:val"), "single")
-        element.set(qn("w:sz"), str(outer_size if edge in {"top", "left", "bottom", "right"} else inner_size))
+        element.set(
+            qn("w:sz"),
+            str(outer_size if edge in {"top", "left", "bottom", "right"} else inner_size),
+        )
         element.set(qn("w:space"), "0")
         element.set(qn("w:color"), color)
 
@@ -105,7 +104,7 @@ def _prevent_row_split(row) -> None:
     tr_pr.append(cant_split)
 
 
-def _set_update_fields(document: Document) -> None:
+def _set_update_fields(document: DocxDocument) -> None:
     settings = document.settings._element
     node = settings.find(qn("w:updateFields"))
     if node is None:
@@ -179,9 +178,11 @@ def _responsible_and_date(item: MeetingItem) -> tuple[str, str]:
         date_value = item.due_date_text or item.due_date_iso or "N.A."
         return "Informativo", date_value
     responsible = item.responsible or "Por confirmar"
-    date_value = item.due_date_text or item.due_date_iso
-    if not date_value:
-        date_value = "Por confirmar" if item.category == "compromiso" else "N.A."
+    date_value = (
+        item.due_date_text
+        or item.due_date_iso
+        or ("Por confirmar" if item.category == "compromiso" else "N.A.")
+    )
     return responsible, date_value
 
 
@@ -196,7 +197,9 @@ def _add_description(cell, item: MeetingItem) -> None:
         speaker_run = paragraph.add_run(f"{item.source_speaker} ")
         _style_run(speaker_run, size=9, bold=True)
     description = item.description
-    if item.project_code and not description.casefold().startswith(f"proyecto {item.project_code}".casefold()):
+    if item.project_code and not description.casefold().startswith(
+        f"proyecto {item.project_code}".casefold()
+    ):
         description = f"Proyecto {item.project_code} — {description}"
     body = paragraph.add_run(description)
     _style_run(body, size=9)
@@ -204,7 +207,7 @@ def _add_description(cell, item: MeetingItem) -> None:
     _set_cell_margins(cell, top=60, bottom=60)
 
 
-def _configure_section(document: Document) -> None:
+def _configure_section(document: DocxDocument) -> None:
     section = document.sections[0]
     section.page_width = Inches(8.5)
     section.page_height = Inches(11)
@@ -216,7 +219,9 @@ def _configure_section(document: Document) -> None:
     section.footer_distance = Inches(0.25)
 
 
-def _build_header(document: Document, metadata: MeetingMetadata, logo_path: Path, border_color: str) -> None:
+def _build_header(
+    document: DocxDocument, metadata: MeetingMetadata, logo_path: Path, border_color: str
+) -> None:
     header = document.sections[0].header
     header.is_linked_to_previous = False
     header_paragraph = header.paragraphs[0]
@@ -276,7 +281,9 @@ def _build_header(document: Document, metadata: MeetingMetadata, logo_path: Path
     header_paragraph.paragraph_format.line_spacing = 0.2
 
 
-def _build_general_data(document: Document, metadata: MeetingMetadata, border_color: str) -> None:
+def _build_general_data(
+    document: DocxDocument, metadata: MeetingMetadata, border_color: str
+) -> None:
     table = document.add_table(rows=4, cols=4)
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
     table.autofit = False
@@ -305,7 +312,7 @@ def _build_general_data(document: Document, metadata: MeetingMetadata, border_co
     document.add_paragraph().paragraph_format.space_after = Pt(0)
 
 
-def _build_attendees(document: Document, attendees: list[Attendee], border_color: str) -> None:
+def _build_attendees(document: DocxDocument, attendees: list[Attendee], border_color: str) -> None:
     count = max(len(attendees), 1)
     table = document.add_table(rows=2 + count, cols=3)
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
@@ -324,9 +331,17 @@ def _build_attendees(document: Document, attendees: list[Attendee], border_color
 
     if attendees:
         for row_idx, attendee in enumerate(attendees, start=2):
-            _write_cell(table.cell(row_idx, 0), str(attendee.id or row_idx - 1), align=WD_ALIGN_PARAGRAPH.CENTER)
+            _write_cell(
+                table.cell(row_idx, 0),
+                str(attendee.id or row_idx - 1),
+                align=WD_ALIGN_PARAGRAPH.CENTER,
+            )
             _write_cell(table.cell(row_idx, 1), _format_attendee(attendee))
-            _write_cell(table.cell(row_idx, 2), attendee.organization or "Por confirmar", align=WD_ALIGN_PARAGRAPH.CENTER)
+            _write_cell(
+                table.cell(row_idx, 2),
+                attendee.organization or "Por confirmar",
+                align=WD_ALIGN_PARAGRAPH.CENTER,
+            )
             _prevent_row_split(table.rows[row_idx])
     else:
         _write_cell(table.cell(2, 0), "1", align=WD_ALIGN_PARAGRAPH.CENTER)
@@ -336,7 +351,7 @@ def _build_attendees(document: Document, attendees: list[Attendee], border_color
     document.add_paragraph().paragraph_format.space_after = Pt(0)
 
 
-def _build_approval(document: Document, metadata: MeetingMetadata, border_color: str) -> None:
+def _build_approval(document: DocxDocument, metadata: MeetingMetadata, border_color: str) -> None:
     table = document.add_table(rows=2, cols=4)
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
     table.autofit = False
@@ -345,8 +360,18 @@ def _build_approval(document: Document, metadata: MeetingMetadata, border_color:
     _set_table_grid_widths(table, widths)
 
     values = [
-        ("Minuta Tomada por:", metadata.minute_taker or "Por confirmar", "Fecha:", format_date(metadata.minute_taker_date, "/")),
-        ("Minuta Aprobada por:", metadata.approved_by or "", "Fecha:", format_date(metadata.approval_date, "/")),
+        (
+            "Minuta Tomada por:",
+            metadata.minute_taker or "Por confirmar",
+            "Fecha:",
+            format_date(metadata.minute_taker_date, "/"),
+        ),
+        (
+            "Minuta Aprobada por:",
+            metadata.approved_by or "",
+            "Fecha:",
+            format_date(metadata.approval_date, "/"),
+        ),
     ]
     for row_idx, row_values in enumerate(values):
         _write_cell(table.cell(row_idx, 0), row_values[0], bold=True)
@@ -357,11 +382,8 @@ def _build_approval(document: Document, metadata: MeetingMetadata, border_color:
     document.add_paragraph().paragraph_format.space_after = Pt(0)
 
 
-def _build_items(document: Document, items: list[MeetingItem], border_color: str) -> None:
-    items = [
-        item for item in items
-        if getattr(item, "review_status", "pendiente") != "descartado"
-    ]
+def _build_items(document: DocxDocument, items: list[MeetingItem], border_color: str) -> None:
+    items = [item for item in items if getattr(item, "review_status", "pendiente") != "descartado"]
     count = max(len(items), 1)
     table = document.add_table(rows=2 + count, cols=4)
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
@@ -371,7 +393,9 @@ def _build_items(document: Document, items: list[MeetingItem], border_color: str
     _set_table_grid_widths(table, widths)
 
     title = table.cell(0, 0).merge(table.cell(0, 3))
-    _write_cell(title, "Acuerdos y Compromisos", bold=True, size=10, align=WD_ALIGN_PARAGRAPH.CENTER)
+    _write_cell(
+        title, "Acuerdos y Compromisos", bold=True, size=10, align=WD_ALIGN_PARAGRAPH.CENTER
+    )
     headers = ["N°", "Descripción", "Responsable", "Fecha"]
     for idx, header in enumerate(headers):
         _write_cell(table.cell(1, idx), header, bold=True, size=9, align=WD_ALIGN_PARAGRAPH.CENTER)
@@ -418,7 +442,9 @@ def generate_ash_docx(
     document.core_properties.title = metadata.minute_number or "Minuta de Reunión"
     document.core_properties.subject = metadata.matter or "Minuta ASH"
     document.core_properties.author = "ASH Ingeniería y Proyectos"
-    document.core_properties.last_modified_by = metadata.minute_taker or "ASH Ingeniería y Proyectos"
+    document.core_properties.last_modified_by = (
+        metadata.minute_taker or "ASH Ingeniería y Proyectos"
+    )
     document.core_properties.comments = "Documento emitido mediante Minutas ASH."
-    document.save(output)
+    document.save(str(output))
     return output

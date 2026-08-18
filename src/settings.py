@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime
 import json
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 
@@ -20,19 +20,19 @@ class AppSettings(BaseModel):
 
     model_config = ConfigDict(extra="ignore", str_strip_whitespace=True)
 
-    app_version: str = "2.3.5"
-    release_sequence: int = Field(default=2003005, ge=1)
+    app_version: str = "2.3.7"
+    release_sequence: int = Field(default=2003007, ge=1)
     product_generation: int = Field(default=2, ge=1)
-    legacy_predecessor: str = "2.3.4"
+    legacy_predecessor: str = "2.3.2"
     schema_version: int = Field(default=6, ge=1)
     ollama_base_url: str = "http://127.0.0.1:11434"
     model: str = "qwen3:8b"
     timeout_seconds: int = Field(default=1200, ge=30, le=14400)
-    max_chars_per_chunk: int = Field(default=6000, ge=2000, le=100000)
-    single_pass_max_chars: int = Field(default=7000, ge=2000, le=150000)
-    context_length: int = Field(default=6144, ge=2048, le=131072)
+    max_chars_per_chunk: int = Field(default=15000, ge=2000, le=100000)
+    single_pass_max_chars: int = Field(default=18000, ge=2000, le=150000)
+    context_length: int = Field(default=8192, ge=2048, le=131072)
     temperature: float = Field(default=0.05, ge=0.0, le=1.0)
-    keep_alive: str = "2m"
+    keep_alive: str = "30m"
 
     # Procesamiento resiliente. El perfil automático es la experiencia
     # predeterminada y adapta bloques, contexto y espera al equipo.
@@ -45,22 +45,14 @@ class AppSettings(BaseModel):
     processing_split_on_timeout: bool = True
     processing_split_on_structure_error: bool = True
     processing_min_chunk_chars: int = Field(default=1800, ge=1000, le=10000)
-    processing_consolidation_batch_chars: int = Field(default=8500, ge=5000, le=100000)
-    processing_overlap_lines: int = Field(default=1, ge=0, le=8)
+    processing_consolidation_batch_chars: int = Field(default=12000, ge=5000, le=100000)
+    processing_overlap_lines: int = Field(default=2, ge=0, le=8)
     processing_checkpoint_enabled: bool = True
     processing_checkpoint_retention_days: int = Field(default=14, ge=1, le=365)
     processing_keep_completed_checkpoint: bool = False
     processing_force_chunking: bool = False
-    processing_warmup_resource_recheck: bool = True
-    unload_model_after_processing: bool = True
-    processing_release_completed_text: bool = True
-    processing_model_memory_reserve_gib: float = Field(default=0.0, ge=0.0, le=64.0)
-    processing_min_free_memory_gib: float = Field(default=1.5, ge=0.5, le=32.0)
-    ollama_max_output_tokens: int = Field(default=1400, ge=128, le=4096)
-    ollama_consolidation_output_tokens: int = Field(default=1800, ge=128, le=4096)
-    ollama_recovery_output_tokens: int = Field(default=1000, ge=128, le=4096)
-    memory_warning_percent: float = Field(default=85.0, ge=50.0, le=99.0)
-    memory_critical_percent: float = Field(default=93.0, ge=60.0, le=100.0)
+    memory_warning_percent: float = Field(default=88.0, ge=50.0, le=99.0)
+    memory_critical_percent: float = Field(default=95.0, ge=60.0, le=100.0)
 
     company_name: str = "ASH Ingeniería y Proyectos"
     logo_path: str = "assets/logo_ash.png"
@@ -71,21 +63,20 @@ class AppSettings(BaseModel):
     border_color: str = "1F497D"
     document_provider: str = "ash_minutes_v1"
     repository_provider: Literal["sqlite", "mssql"] = "sqlite"
-    minimum_free_space_bytes: int = Field(default=12 * 1024**3, ge=2 * 1024**3)
+    minimum_free_space_bytes: int = Field(default=7 * 1024**3, ge=2 * 1024**3)
 
     # Gestión del componente local. ``auto`` reutiliza una instalación existente
     # y, si no hay ninguna, prepara el runtime administrado por Minutas ASH.
     runtime_mode: Literal["auto", "managed", "system"] = "auto"
     managed_runtime_url: str = (
-        "https://github.com/ollama/ollama/releases/latest/download/"
-        "ollama-windows-amd64.zip"
+        "https://github.com/ollama/ollama/releases/latest/download/ollama-windows-amd64.zip"
     )
     managed_runtime_filename: str = "ollama-windows-amd64.zip"
     managed_runtime_minimum_bytes: int = Field(default=50 * 1024**2, ge=1024**2)
     managed_models_subdir: str = "models"
 
     # Apariencia y accesibilidad.
-    appearance_theme: Literal["system", "light", "dark"] = "system"
+    appearance_theme: Literal["system", "light", "dark", "high_contrast"] = "system"
     appearance_accent_color: str = "#1F4E78"
     appearance_font_family: str = "Segoe UI"
     appearance_font_size: int = Field(default=10, ge=8, le=18)
@@ -98,16 +89,14 @@ class AppSettings(BaseModel):
     # Productividad y revisión masiva.
     review_auto_advance: bool = True
     review_confirm_bulk_actions: bool = True
-    review_bulk_confirm_threshold: int = Field(default=25, ge=2, le=500)
-    review_drag_select: bool = True
     review_remember_search: bool = False
-    activity_log_max_lines: int = Field(default=600, ge=100, le=5000)
 
     # Proveedor de procesamiento. El modo local permanece como predeterminado.
     processing_provider: Literal[
         "ollama_local", "azure_openai", "openai", "anthropic", "gemini", "openai_compatible"
     ] = "ollama_local"
     remote_timeout_seconds: int = Field(default=300, ge=30, le=3600)
+    remote_input_cost_per_million_usd: float = Field(default=0.0, ge=0.0)
     confirm_remote_processing: bool = True
     fallback_to_local: bool = True
     azure_openai_base_url: str = ""
@@ -128,17 +117,7 @@ class AppSettings(BaseModel):
     semantic_guard_deterministic_fallback: bool = True
     semantic_guard_min_coverage: float = Field(default=0.80, ge=0.0, le=1.0)
     semantic_guard_fallback_min_confidence: float = Field(default=0.82, ge=0.0, le=1.0)
-    semantic_guard_max_candidates: int = Field(default=300, ge=10, le=1000)
-    semantic_guard_prompt_max_candidates: int = Field(default=80, ge=10, le=500)
-    semantic_guard_prompt_max_chars: int = Field(default=5500, ge=1000, le=50000)
-    semantic_guard_second_pass_max_candidates: int = Field(default=120, ge=10, le=500)
-    semantic_guard_recovery_batch_chars: int = Field(default=5000, ge=1000, le=50000)
-    semantic_guard_recovery_batch_items: int = Field(default=30, ge=5, le=200)
-
-    # Limpieza determinística previa: reduce subtítulos progresivos repetidos sin
-    # pedir trabajo adicional al modelo local.
-    transcript_remove_noise: bool = True
-    transcript_merge_gap_seconds: float = Field(default=6.0, ge=0.5, le=30.0)
+    semantic_guard_max_candidates: int = Field(default=500, ge=10, le=1000)
 
     # Experiencia de usuario y revelación progresiva.
     interface_mode: Literal["essential", "advanced"] = "essential"
@@ -146,7 +125,9 @@ class AppSettings(BaseModel):
     essential_recent_limit: int = Field(default=5, ge=3, le=10)
     quick_detect_participants: bool = True
     review_focus_attention: bool = True
-    default_meeting_type: Literal["cliente", "interna", "kom", "seguimiento", "cartera", "otra"] = "cliente"
+    default_meeting_type: Literal["cliente", "interna", "kom", "seguimiento", "cartera", "otra"] = (
+        "cliente"
+    )
 
     # Flujo guiado, revisión y numeración documental.
     guided_mode: bool = True
@@ -161,9 +142,36 @@ class AppSettings(BaseModel):
     default_minute_taker: str = ""
     remember_last_minute_taker: bool = True
     flexible_sources_enabled: bool = True
+    whisper_model: Literal["base", "small"] = "base"
+    transcription_language: str = "es"
+    whisper_cpu_threads: int = Field(default=0, ge=0, le=64)
+    diarization_enabled: bool = False
+    diarization_worker_path: str = ""
+    transcription_quality_warning: bool = True
     history_trash_retention_days: int = Field(default=30, ge=1, le=3650)
     history_exclude_tests_from_dashboard: bool = True
     learning_capture_enabled: bool = True
+    learning_retrieval_enabled: bool = True
+    learning_retrieval_limit: int = Field(default=3, ge=1, le=10)
+
+    # Automatizacion de bandeja y revision por excepciones.
+    inbox_automation_enabled: bool = False
+    inbox_auto_start_processing: bool = False
+    inbox_automation_max_retries: int = Field(default=3, ge=1, le=10)
+    inbox_scan_recursively: bool = True
+    inbox_scan_max_files: int = Field(default=500, ge=10, le=10000)
+    review_by_exceptions: bool = False
+    review_auto_approval_threshold: float = Field(default=0.90, ge=0.70, le=1.0)
+    automation_auto_generate_document: bool = False
+    generate_pdf: bool = True
+    notify_on_completion: bool = True
+
+    # Importación opcional desde Microsoft Teams mediante permisos delegados.
+    # Client y tenant no son secretos; los tokens OAuth nunca se persisten.
+    teams_graph_enabled: bool = False
+    teams_graph_client_id: str = ""
+    teams_graph_tenant_id: str = "organizations"
+    teams_graph_timeout_seconds: int = Field(default=60, ge=15, le=300)
 
     # Plantillas y catálogos corporativos.
     template_selection_mode: Literal["automatic", "standard", "managed"] = "automatic"
@@ -188,11 +196,11 @@ class AppSettings(BaseModel):
     update_enabled: bool = True
     update_check_on_start: bool = True
     update_check_interval_hours: int = Field(default=24, ge=1, le=720)
-    update_source: Literal["manifest", "github"] = "manifest"
+    update_source: Literal["manifest", "github"] = "github"
     update_channel: Literal["stable", "beta"] = "stable"
     update_manifest_url: str = ""
-    github_owner: str = ""
-    github_repo: str = ""
+    github_owner: str = "MTLeon"
+    github_repo: str = "MinutasASH-Releases"
     update_allow_prerelease: bool = False
     update_last_checked_at: str | None = None
 
@@ -248,15 +256,11 @@ class AppSettings(BaseModel):
         return value
 
     @model_validator(mode="after")
-    def validate_processing_limits(self) -> "AppSettings":
+    def validate_processing_limits(self) -> AppSettings:
         if self.adaptive_timeout_max_seconds < self.adaptive_timeout_min_seconds:
-            raise ValueError(
-                "adaptive_timeout_max_seconds no puede ser menor que el mínimo."
-            )
+            raise ValueError("adaptive_timeout_max_seconds no puede ser menor que el mínimo.")
         if self.memory_critical_percent <= self.memory_warning_percent:
-            raise ValueError(
-                "El umbral crítico de memoria debe ser mayor que el de advertencia."
-            )
+            raise ValueError("El umbral crítico de memoria debe ser mayor que el de advertencia.")
         return self
 
     def as_dict(self) -> dict[str, Any]:

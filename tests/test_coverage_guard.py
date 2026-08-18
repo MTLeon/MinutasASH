@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
-import unittest
 from unittest.mock import patch
 
 from src.coverage_guard import (
@@ -12,9 +12,8 @@ from src.coverage_guard import (
 )
 from src.models import Attendee, MeetingMetadata, MinuteAnalysis
 from src.postprocess import normalize_analysis
-from src.vtt_reader import read_teams_vtt
+from src.vtt_reader import TranscriptSegment, read_teams_vtt
 from src.workflow import analyze_meeting, generate_word_package
-
 
 ROOT = Path(__file__).resolve().parents[1]
 EXAMPLE = ROOT / "entrada" / "reunion_prueba_ejemplo.vtt"
@@ -52,6 +51,26 @@ class CoverageGuardTests(unittest.TestCase):
         self.assertNotIn("prueba de audio", combined)
         self.assertNotIn("comencemos", combined)
 
+    def test_vague_follow_up_fragments_are_not_candidates(self):
+        segments = [
+            TranscriptSegment(
+                start="00:12:23.000",
+                end="00:12:25.000",
+                speaker="Angel",
+                text=(
+                    "Tenemos que revisar en conjunto y que a mi me interesa que podamos revisar. "
+                    "Hay que hacerlo. Hay que hacer si o si. "
+                    "Hay que levantar el sistema y validar los equipos con operaciones."
+                ),
+            )
+        ]
+        candidates = extract_action_candidates(segments)
+        combined = " ".join(candidate.text.casefold() for candidate in candidates)
+        self.assertNotIn("hay que hacerlo", combined)
+        self.assertNotIn("hay que hacer si o si", combined)
+        self.assertNotIn("revisar en conjunto", combined)
+        self.assertIn("levantar el sistema", combined)
+
     def test_deterministic_fallback_recovers_all_explicit_points(self):
         raw = read_teams_vtt(EXAMPLE, merge_adjacent=False)
         candidates = extract_action_candidates(raw)
@@ -60,9 +79,7 @@ class CoverageGuardTests(unittest.TestCase):
             client="Cliente de prueba",
             attendees=[Attendee(name="Carlos Soto", organization="ASH")],
         )
-        analysis, added = apply_deterministic_fallback(
-            MinuteAnalysis(), candidates, metadata
-        )
+        analysis, added = apply_deterministic_fallback(MinuteAnalysis(), candidates, metadata)
         analysis = normalize_analysis(analysis, metadata)
         self.assertEqual(added, 5)
         self.assertEqual(len(analysis.items), 5)
@@ -97,10 +114,13 @@ class CoverageGuardTests(unittest.TestCase):
         self.assertEqual(len(bundle.analysis.items), 5)
         self.assertTrue(bundle.diagnostics["recovery_attempted"])
         self.assertEqual(bundle.diagnostics["fallback_added"], 5)
-        self.assertEqual(
-            bundle.diagnostics["final_coverage"]["uncovered_count"], 0
-        )
+        self.assertEqual(bundle.diagnostics["final_coverage"]["uncovered_count"], 0)
         self.assertEqual(bundle.diagnostics["quality_status"], "recuperada")
+        performance = bundle.diagnostics["performance"]
+        self.assertGreater(performance["source_size_bytes"], 0)
+        self.assertGreater(performance["transcript_characters"], 0)
+        self.assertEqual(performance["item_count"], 5)
+        self.assertEqual(performance["estimated_cost_usd"], 0.0)
 
     @patch("src.workflow.create_processing_provider", return_value=EmptyProvider())
     def test_recovered_points_reach_the_corporate_word(self, _provider):
@@ -142,15 +162,11 @@ class CoverageGuardTests(unittest.TestCase):
 
             document = Document(docx_path)
             all_text = " ".join(
-                cell.text
-                for table in document.tables
-                for row in table.rows
-                for cell in row.cells
+                cell.text for table in document.tables for row in table.rows for cell in row.cells
             )
             self.assertIn("Carlos enviará los planos eléctricos", all_text)
             self.assertIn("switch administrado de 16 puertos", all_text)
             self.assertIn("número de señales analógicas", all_text)
-
 
 
 if __name__ == "__main__":

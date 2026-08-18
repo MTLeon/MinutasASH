@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Planificación adaptativa y telemetría del procesamiento.
 
 Este módulo no depende de psutil ni de componentes externos. Permite que la
@@ -7,19 +5,20 @@ aplicación adapte el tamaño de los bloques y el tiempo de espera al equipo,
 al perfil seleccionado y a la longitud real de la fuente.
 """
 
-from dataclasses import dataclass, asdict
+from __future__ import annotations
+
 import ctypes
 import hashlib
 import json
 import math
 import os
-import re
 import time
-from typing import Any, Iterable
+from collections.abc import Iterable
+from dataclasses import asdict, dataclass
+from typing import Any
 
-
-GIB = 1024 ** 3
-MIB = 1024 ** 2
+GIB = 1024**3
+MIB = 1024**2
 
 
 @dataclass(frozen=True)
@@ -89,59 +88,40 @@ PROFILE_PRESETS: dict[str, ProcessingProfile] = {
     "fast": ProcessingProfile(
         profile_id="fast",
         display_name="Rápido",
-        chunk_chars=4500,
-        single_pass_chars=5200,
+        chunk_chars=5200,
+        single_pass_chars=6200,
         context_length=4096,
-        timeout_seconds=1200,
-        min_chunk_chars=1600,
-        max_retries=2,
-        consolidation_batch_chars=6500,
-        overlap_lines=1,
+        timeout_seconds=1500,
+        min_chunk_chars=1800,
+        max_retries=3,
+        consolidation_batch_chars=8000,
+        overlap_lines=2,
     ),
     "balanced": ProcessingProfile(
         profile_id="balanced",
         display_name="Equilibrado",
-        chunk_chars=6000,
-        single_pass_chars=7000,
-        context_length=6144,
-        timeout_seconds=1800,
-        min_chunk_chars=1900,
-        max_retries=2,
-        consolidation_batch_chars=8500,
-        overlap_lines=1,
+        chunk_chars=8500,
+        single_pass_chars=10000,
+        context_length=8192,
+        timeout_seconds=2100,
+        min_chunk_chars=2200,
+        max_retries=3,
+        consolidation_batch_chars=12000,
+        overlap_lines=2,
     ),
     "precise": ProcessingProfile(
         profile_id="precise",
         display_name="Preciso",
-        chunk_chars=8000,
-        single_pass_chars=9500,
-        context_length=8192,
-        timeout_seconds=2400,
-        min_chunk_chars=2200,
+        chunk_chars=11500,
+        single_pass_chars=13500,
+        context_length=12288,
+        timeout_seconds=3000,
+        min_chunk_chars=2600,
         max_retries=3,
-        consolidation_batch_chars=10500,
-        overlap_lines=2,
+        consolidation_batch_chars=16000,
+        overlap_lines=3,
     ),
 }
-
-
-def estimate_model_reserve_bytes(model: str | None, config: dict[str, Any] | None = None) -> int:
-    """Estima la RAM que ocupará el modelo local antes de cargarlo.
-
-    La estimación es deliberadamente conservadora para evitar elegir 8192 tokens
-    cuando el equipo parece holgado únicamente porque Ollama aún no cargó el modelo.
-    """
-
-    config = config or {}
-    configured = float(config.get("processing_model_memory_reserve_gib", 0.0) or 0.0)
-    if configured > 0:
-        return int(configured * GIB)
-    text = str(model or "").casefold()
-    match = re.search(r"(?:^|[:_-])(\d+(?:\.\d+)?)b(?:$|[:_-])", text)
-    billions = float(match.group(1)) if match else 8.0
-    # Aproximación Q4/Q5 + caché y overhead del runtime.
-    reserve_gib = min(16.0, max(2.5, 0.72 * billions + 0.8))
-    return int(reserve_gib * GIB)
 
 
 def _windows_memory() -> ResourceSnapshot | None:
@@ -180,10 +160,13 @@ def _windows_memory() -> ResourceSnapshot | None:
 def _posix_memory() -> ResourceSnapshot | None:
     if os.name == "nt":
         return None
+    sysconf = getattr(os, "sysconf", None)
+    if not callable(sysconf):
+        return None
     try:
-        page_size = int(os.sysconf("SC_PAGE_SIZE"))
-        total_pages = int(os.sysconf("SC_PHYS_PAGES"))
-        available_pages = int(os.sysconf("SC_AVPHYS_PAGES"))
+        page_size = int(sysconf("SC_PAGE_SIZE"))
+        total_pages = int(sysconf("SC_PHYS_PAGES"))
+        available_pages = int(sysconf("SC_AVPHYS_PAGES"))
     except (AttributeError, OSError, ValueError):
         return None
     total = page_size * total_pages
@@ -200,7 +183,9 @@ def get_resource_snapshot() -> ResourceSnapshot:
     return ResourceSnapshot(None, None, None, time.time())
 
 
-def _profile_with_overrides(profile: ProcessingProfile, config: dict[str, Any]) -> ProcessingProfile:
+def _profile_with_overrides(
+    profile: ProcessingProfile, config: dict[str, Any]
+) -> ProcessingProfile:
     """Aplica límites administrativos sin volver frágil el modo automático."""
 
     configured_timeout = int(config.get("timeout_seconds", profile.timeout_seconds))
@@ -233,13 +218,21 @@ def _profile_with_overrides(profile: ProcessingProfile, config: dict[str, Any]) 
         single_pass_chars=max(2000, single_pass),
         context_length=max(2048, context),
         timeout_seconds=timeout,
-        min_chunk_chars=max(1200, int(config.get("processing_min_chunk_chars", profile.min_chunk_chars))),
+        min_chunk_chars=max(
+            1200, int(config.get("processing_min_chunk_chars", profile.min_chunk_chars))
+        ),
         max_retries=retries,
         consolidation_batch_chars=max(
             5000,
-            int(config.get("processing_consolidation_batch_chars", profile.consolidation_batch_chars)),
+            int(
+                config.get(
+                    "processing_consolidation_batch_chars", profile.consolidation_batch_chars
+                )
+            ),
         ),
-        overlap_lines=max(0, min(int(config.get("processing_overlap_lines", profile.overlap_lines)), 8)),
+        overlap_lines=max(
+            0, min(int(config.get("processing_overlap_lines", profile.overlap_lines)), 8)
+        ),
     )
 
 
@@ -249,24 +242,11 @@ def resolve_processing_plan(
     *,
     is_remote: bool = False,
     snapshot: ResourceSnapshot | None = None,
-    model: str | None = None,
-    model_loaded: bool = False,
 ) -> ProcessingPlan:
     snapshot = snapshot or get_resource_snapshot()
     requested = str(config.get("processing_profile", "auto")).strip().lower()
     if requested not in {"auto", *PROFILE_PRESETS.keys()}:
         requested = "auto"
-
-    reserve = 0 if (is_remote or model_loaded) else estimate_model_reserve_bytes(model, config)
-    projected_available = None
-    projected_percent = snapshot.memory_percent
-    if snapshot.available_memory_bytes is not None:
-        projected_available = max(0, snapshot.available_memory_bytes - reserve)
-    if snapshot.total_memory_bytes and projected_available is not None:
-        projected_percent = (snapshot.total_memory_bytes - projected_available) / snapshot.total_memory_bytes * 100.0
-
-    warning_threshold = float(config.get("memory_warning_percent", 85.0))
-    critical_threshold = float(config.get("memory_critical_percent", 93.0))
 
     if is_remote:
         selected_id = "balanced" if requested == "auto" else requested
@@ -275,19 +255,17 @@ def resolve_processing_plan(
         selected_id = requested
         reason = f"Perfil {PROFILE_PRESETS[selected_id].display_name} seleccionado por el usuario."
     else:
+        percent = snapshot.memory_percent
+        available = snapshot.available_memory_bytes
         total = snapshot.total_memory_bytes
-        minimum_free = float(config.get("processing_min_free_memory_gib", 1.5)) * GIB
         if (
-            (projected_percent is not None and projected_percent >= warning_threshold)
-            or (projected_available is not None and projected_available < minimum_free)
-            or (total is not None and total < 12 * GIB)
+            (percent is not None and percent >= 90.0)
+            or (available is not None and available < 2 * GIB)
+            or (total is not None and total < 10 * GIB)
         ):
             selected_id = "fast"
-            reason = (
-                "Se reserva memoria para el modelo local antes de procesar; "
-                "se usarán bloques pequeños y contexto reducido."
-            )
-        elif transcript_chars > 140_000:
+            reason = "El equipo tiene poca memoria disponible; se usarán bloques pequeños."
+        elif transcript_chars > 160_000:
             selected_id = "fast"
             reason = "La reunión es extensa; se prioriza continuidad y recuperación."
         else:
@@ -297,24 +275,22 @@ def resolve_processing_plan(
     profile = _profile_with_overrides(PROFILE_PRESETS[selected_id], config)
     memory_warning: str | None = None
     percent = snapshot.memory_percent
-    pressure = max(value for value in (percent, projected_percent) if value is not None) if any(
-        value is not None for value in (percent, projected_percent)
-    ) else None
-    if pressure is not None:
-        if pressure >= critical_threshold:
+    if percent is not None:
+        warning_threshold = float(config.get("memory_warning_percent", 88.0))
+        critical_threshold = float(config.get("memory_critical_percent", 95.0))
+        if percent >= critical_threshold:
             memory_warning = (
-                f"Memoria crítica o proyectada ({pressure:.0f} %). Se aplicará el perfil rápido "
-                "y se dividirán automáticamente los bloques que tarden demasiado."
+                f"Memoria crítica ({percent:.0f} %). Se aplicará el perfil rápido y "
+                "se dividirán automáticamente los bloques que tarden demasiado."
             )
             profile = _profile_with_overrides(PROFILE_PRESETS["fast"], config)
-            reason = "La memoria está en nivel crítico; se fuerza un plan conservador y recuperable."
-        elif pressure >= warning_threshold:
-            memory_warning = (
-                f"Memoria elevada o proyectada ({pressure:.0f} %). Se limitará el contexto del modelo."
+            reason = (
+                "La memoria está en nivel crítico; se fuerza un plan conservador y recuperable."
             )
-            if requested == "auto" and profile.profile_id != "fast":
-                profile = _profile_with_overrides(PROFILE_PRESETS["fast"], config)
-                reason = "La presión de memoria proyectada requiere el perfil rápido."
+        elif percent >= warning_threshold:
+            memory_warning = (
+                f"Memoria elevada ({percent:.0f} %). El procesamiento puede tardar más."
+            )
 
     force_chunking = bool(config.get("processing_force_chunking", False)) or (
         transcript_chars > profile.single_pass_chars
@@ -412,10 +388,7 @@ def group_serialized_payloads(
     current: list[Any] = []
     current_size = 0
     for payload in payloads:
-        if hasattr(payload, "model_dump"):
-            value = payload.model_dump()
-        else:
-            value = payload
+        value = payload.model_dump() if hasattr(payload, "model_dump") else payload
         size = len(json.dumps(value, ensure_ascii=False))
         if current and current_size + size > max_chars:
             groups.append(current)
@@ -447,11 +420,7 @@ def estimate_eta_seconds(completed_durations: list[float], remaining_weight: flo
     # la estimación. Se evita importar statistics en la ruta crítica.
     ordered = sorted(valid[-8:])
     middle = len(ordered) // 2
-    median = (
-        ordered[middle]
-        if len(ordered) % 2
-        else (ordered[middle - 1] + ordered[middle]) / 2.0
-    )
+    median = ordered[middle] if len(ordered) % 2 else (ordered[middle - 1] + ordered[middle]) / 2.0
     return median * remaining_weight
 
 

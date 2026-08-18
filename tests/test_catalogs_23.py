@@ -1,11 +1,11 @@
 from __future__ import annotations
 
+import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
-import unittest
 
 from src.catalog_models import ClientRecord, ContactRecord, OrganizationRecord, ProjectCatalogRecord
-from src.database import AppDatabase, CURRENT_SCHEMA_VERSION
+from src.database import CURRENT_SCHEMA_VERSION, AppDatabase
 
 
 class Catalogs23Tests(unittest.TestCase):
@@ -17,7 +17,9 @@ class Catalogs23Tests(unittest.TestCase):
                 OrganizationRecord(legal_name="ASH Ingeniería y Proyectos", short_name="ASH")
             )
             client_id = db.upsert_client(
-                ClientRecord(legal_name="Cliente de Prueba S.A.", short_name="Cliente", organization_id=None)
+                ClientRecord(
+                    legal_name="Cliente de Prueba S.A.", short_name="Cliente", organization_id=None
+                )
             )
             contact_id = db.upsert_contact_record(
                 ContactRecord(
@@ -44,7 +46,7 @@ class Catalogs23Tests(unittest.TestCase):
             self.assertEqual(db.get_project("P0001")["client_id"], client_id)
             events = db.list_audit_events()
             self.assertGreaterEqual(len(events), 3)
-            self.assertTrue(all(event.get("app_version") == "2.3.5" for event in events[:3]))
+            self.assertTrue(all(event.get("app_version") == "2.3.7" for event in events[:3]))
 
     def test_deactivation_keeps_historical_record(self) -> None:
         with TemporaryDirectory() as temp:

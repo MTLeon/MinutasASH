@@ -12,6 +12,7 @@ htmlcov/
 # Entornos virtuales
 .venv/
 .buildvenv/
+.whisper-buildvenv/
 venv/
 env/
 
@@ -19,11 +20,13 @@ env/
 build/
 dist/
 dist_installer/
+dist_whisper/
 *.spec.bak
 *.log
 
 # Runtime local y datos de usuario
 .runtime/
+config_gui.json
 *.db
 *.db-shm
 *.db-wal

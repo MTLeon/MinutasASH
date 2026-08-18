@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 from pydantic import BaseModel
 
-from src.ollama_client import OllamaClient, StructuredOutputTruncated
+from src.ollama_client import OllamaClient
 
 
 class SampleOutput(BaseModel):
@@ -36,9 +36,7 @@ class FakeSession:
         self.closed = False
 
     def post(self, url, json=None, stream=None, timeout=None):
-        self.requests.append(
-            {"url": url, "json": json, "stream": stream, "timeout": timeout}
-        )
+        self.requests.append({"url": url, "json": json, "stream": stream, "timeout": timeout})
         return self.responses.pop(0)
 
     def close(self) -> None:
@@ -74,12 +72,8 @@ class OllamaStreaming232Tests(unittest.TestCase):
         self.assertEqual(finished[0].get("stage"), "unit")
 
     def test_invalid_schema_is_retried_with_a_new_stream(self) -> None:
-        first = FakeResponse(
-            [{"message": {"content": '{"wrong": 1}'}, "done": True}]
-        )
-        second = FakeResponse(
-            [{"message": {"content": '{"value": "fixed"}'}, "done": True}]
-        )
+        first = FakeResponse([{"message": {"content": '{"wrong": 1}'}, "done": True}])
+        second = FakeResponse([{"message": {"content": '{"value": "fixed"}'}, "done": True}])
         session = FakeSession([first, second])
         events: list[dict] = []
         client = OllamaClient("http://127.0.0.1:11434", "fake", timeout_seconds=60)
@@ -88,57 +82,7 @@ class OllamaStreaming232Tests(unittest.TestCase):
             result = client.structured_chat("system", "user", SampleOutput)
         self.assertEqual(result.value, "fixed")
         self.assertEqual(len(session.requests), 2)
-        self.assertTrue(
-            any(event.get("type") == "schema_validation_failed" for event in events)
-        )
-
-    def test_truncated_json_retries_with_a_larger_output_budget(self) -> None:
-        first = FakeResponse(
-            [{
-                "message": {"content": '{"value": "respuesta incompleta'},
-                "done": True,
-                "done_reason": "length",
-            }]
-        )
-        second = FakeResponse(
-            [{"message": {"content": '{"value": "completa"}'}, "done": True}]
-        )
-        session = FakeSession([first, second])
-        client = OllamaClient(
-            "http://127.0.0.1:11434",
-            "fake",
-            timeout_seconds=60,
-            context_length=4096,
-            max_output_tokens=400,
-        )
-        with patch("src.ollama_client.requests.Session", return_value=session):
-            result = client.structured_chat("system", "user", SampleOutput)
-        self.assertEqual(result.value, "completa")
-        self.assertEqual(len(session.requests), 2)
-        first_limit = session.requests[0]["json"]["options"]["num_predict"]
-        second_limit = session.requests[1]["json"]["options"]["num_predict"]
-        self.assertGreater(second_limit, first_limit)
-
-    def test_repeated_truncation_raises_specific_error(self) -> None:
-        responses = [
-            FakeResponse([{
-                "message": {"content": '{"value": "cortada'},
-                "done": True,
-                "done_reason": "length",
-            }])
-            for _ in range(3)
-        ]
-        session = FakeSession(responses)
-        client = OllamaClient(
-            "http://127.0.0.1:11434",
-            "fake",
-            timeout_seconds=60,
-            context_length=4096,
-            max_output_tokens=400,
-        )
-        with patch("src.ollama_client.requests.Session", return_value=session):
-            with self.assertRaises(StructuredOutputTruncated):
-                client.structured_chat("system", "user", SampleOutput)
+        self.assertTrue(any(event.get("type") == "schema_validation_failed" for event in events))
 
 
 if __name__ == "__main__":

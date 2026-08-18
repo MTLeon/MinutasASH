@@ -6,14 +6,18 @@ from typing import TypeVar
 import requests
 from pydantic import BaseModel
 
-from src.providers.base import ProcessingProviderError
+from src.providers.base import ProcessingProviderError, RuntimeCancellableProvider
 from src.providers.http_common import post_json, validate_json_text
-
+from src.providers.schema_compat import (
+    is_schema_rejection,
+    json_fallback_prompt,
+    strict_object_schema,
+)
 
 T = TypeVar("T", bound=BaseModel)
 
 
-class AzureOpenAIResponsesProvider:
+class AzureOpenAIResponsesProvider(RuntimeCancellableProvider):
     provider_id = "azure_openai"
     display_name = "Corporativo — Azure OpenAI"
     is_remote = True
@@ -30,7 +34,9 @@ class AzureOpenAIResponsesProvider:
         if not self.api_key:
             raise ProcessingProviderError("No existe una credencial guardada para Azure OpenAI.")
         if not self.model:
-            raise ProcessingProviderError("Debe configurar el nombre del deployment o modelo de Azure.")
+            raise ProcessingProviderError(
+                "Debe configurar el nombre del deployment o modelo de Azure."
+            )
 
     @property
     def _headers(self) -> dict[str, str]:
@@ -44,7 +50,9 @@ class AzureOpenAIResponsesProvider:
                 timeout=min(self.timeout, 30),
             )
         except requests.RequestException as exc:
-            raise ProcessingProviderError(f"No fue posible conectar con Azure OpenAI: {exc}") from exc
+            raise ProcessingProviderError(
+                f"No fue posible conectar con Azure OpenAI: {exc}"
+            ) from exc
         if response.status_code >= 400:
             raise ProcessingProviderError(
                 f"Azure OpenAI rechazó la comprobación (HTTP {response.status_code})."
@@ -69,17 +77,34 @@ class AzureOpenAIResponsesProvider:
                     "type": "json_schema",
                     "name": name or "structured_response",
                     "description": "Estructura de minuta de reunión de ASH.",
-                    "schema": response_model.model_json_schema(),
+                    "schema": strict_object_schema(response_model.model_json_schema()),
                     "strict": True,
                 }
             },
         }
-        data = post_json(
-            f"{self.base_url}/responses",
-            headers=self._headers,
-            payload=payload,
-            timeout=self.timeout,
-        )
+        try:
+            data = post_json(
+                f"{self.base_url}/responses",
+                headers=self._headers,
+                payload=payload,
+                timeout=self.timeout,
+                cancelled=self._cancelled,
+            )
+        except ProcessingProviderError as exc:
+            if not is_schema_rejection(exc):
+                raise
+            fallback_payload = {key: value for key, value in payload.items() if key != "text"}
+            fallback_payload["input"] = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": json_fallback_prompt(user_prompt, response_model)},
+            ]
+            data = post_json(
+                f"{self.base_url}/responses",
+                headers=self._headers,
+                payload=fallback_payload,
+                timeout=self.timeout,
+                cancelled=self._cancelled,
+            )
         text = data.get("output_text")
         if not text:
             for item in data.get("output", []):
