@@ -18,7 +18,7 @@ class TranscriptionComponentsTests(unittest.TestCase):
         self.assertLess(MODELS["base"].download_mb, MODELS["small"].download_mb)
 
     def test_portable_ffmpeg_is_detected(self) -> None:
-        with TemporaryDirectory(dir=".runtime") as folder:
+        with TemporaryDirectory() as folder:
             root = Path(folder)
             executable = root / "tools" / "ffmpeg.exe"
             executable.parent.mkdir()
@@ -26,7 +26,7 @@ class TranscriptionComponentsTests(unittest.TestCase):
             self.assertEqual(find_ffmpeg(root), executable)
 
     def test_diagnostic_works_without_optional_engine(self) -> None:
-        with TemporaryDirectory(dir=".runtime") as folder:
+        with TemporaryDirectory() as folder:
             root = Path(folder)
             diagnostic = diagnose("base", app_dir=root, cache_dir=root / "models")
             self.assertEqual(diagnostic.model_name, "base")
@@ -34,7 +34,7 @@ class TranscriptionComponentsTests(unittest.TestCase):
             self.assertFalse(diagnostic.model_downloaded)
 
     def test_model_cache_uses_hugging_face_layout(self) -> None:
-        with TemporaryDirectory(dir=".runtime") as folder:
+        with TemporaryDirectory() as folder:
             root = Path(folder)
             self.assertEqual(
                 model_path(root, "small").name,
@@ -56,7 +56,7 @@ class TranscriptionComponentsTests(unittest.TestCase):
 
     def test_missing_media_is_rejected_before_loading_engine(self) -> None:
         with (
-            TemporaryDirectory(dir=".runtime") as folder,
+            TemporaryDirectory() as folder,
             self.assertRaises(FileNotFoundError),
         ):
             transcribe(Path(folder) / "missing.wav", model_name="base")

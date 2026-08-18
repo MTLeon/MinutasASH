@@ -82,7 +82,7 @@ class TeamsGraphImporterTests(unittest.TestCase):
         client.find_meeting_by_join_url.return_value = {"id": "meeting", "subject": "Revisión ASH"}
         client.list_transcripts.return_value = [{"id": "transcript-1"}]
         client.download_content.return_value = b"WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nHola\n"
-        with TemporaryDirectory(dir=".runtime") as directory:
+        with TemporaryDirectory() as directory:
             root = Path(directory)
             importer = TeamsGraphImporter(client, root / "inbox", root / "state.json")
 
