@@ -20,7 +20,7 @@ Este documento sustituye como fuente de estado a las listas históricas. Los det
 
 ## Validación automatizada vigente
 
-- `scripts/Quality.ps1`: compilación, formato, lint, tipos, 257 pruebas y cobertura 71,42 % (puerta mínima: 70 %).
+- `scripts/Quality.ps1`: compilación, formato, lint, tipos, 257 pruebas y cobertura 71,41 % (puerta mínima: 70 %).
 - `scripts/Evaluate-Benchmark.ps1`: banco comparable por proveedor.
 - `scripts/Test-VisualLayouts.ps1`: 75 combinaciones de resolución/escala, sin fallos.
 - `scripts/Test-InstallerSmoke.ps1`: smoke seguro en rutas aisladas del workspace.

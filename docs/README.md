@@ -26,4 +26,13 @@
 - `ROADMAP.md`: evolución funcional.
 - `DEUDA.md`: deuda técnica vigente.
 
-Los documentos históricos que todavía explican migraciones permanecen en esta carpeta. Se retiraron manuales y validaciones duplicados que ya habían sido sustituidos.
+## Histórico
+
+La carpeta `historico/` concentra material sustituido que se conserva como trazabilidad:
+
+- notas y validaciones de releases anteriores;
+- roadmaps ya ejecutados o reemplazados;
+- documentación de la línea histórica 5.x.
+
+Los documentos `MIGRACION_DESDE_*.md` permanecen en la raíz porque siguen siendo puntos de
+entrada operativos para instalaciones antiguas.

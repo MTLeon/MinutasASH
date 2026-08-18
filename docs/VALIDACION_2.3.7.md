@@ -28,7 +28,7 @@
 
 ## Resultado final local — 18 de agosto de 2026
 
-- `scripts/Quality.ps1`: aprobado; 257 pruebas, cobertura 71,42 %.
+- `scripts/Quality.ps1`: aprobado; 257 pruebas, cobertura 71,41 %.
 - Setup principal: firma válida con sello temporal; SHA-256
   `257f12a5799b3834d8444d56b715b12cfa8c2e1182b7cb4ed3fb100bb45cf215`.
 - Setup Whisper CPU: firma válida con sello temporal; SHA-256
