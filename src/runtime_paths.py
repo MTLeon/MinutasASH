@@ -40,8 +40,18 @@ def roaming_app_data() -> Path:
     return base / APP_VENDOR / APP_NAME
 
 
+def _configured_data_root() -> Path | None:
+    value = os.environ.get("MINUTAS_ASH_DATA_ROOT", "").strip()
+    if not value:
+        return None
+    return Path(value).expanduser().resolve()
+
+
 def user_data_root() -> Path:
     """Datos editables y privados de la aplicación."""
+    configured = _configured_data_root()
+    if configured is not None:
+        return configured
     if not is_frozen():
         return source_root() / ".runtime"
     return local_app_data()
@@ -66,6 +76,9 @@ def default_output_dir() -> Path:
 
 
 def config_path() -> Path:
+    configured = _configured_data_root()
+    if configured is not None:
+        return configured / "config.json"
     return roaming_app_data() / "config.json" if is_frozen() else user_data_root() / "config.json"
 
 

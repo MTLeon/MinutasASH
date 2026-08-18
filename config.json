@@ -62,7 +62,7 @@
     "semantic_guard_min_coverage":  0.8,
     "semantic_guard_fallback_min_confidence":  0.82,
     "semantic_guard_max_candidates":  500,
-    "release_sequence":  2003006,
+    "release_sequence":  2003007,
     "product_generation":  2,
     "legacy_predecessor":  "2.3.2",
     "guided_mode":  true,

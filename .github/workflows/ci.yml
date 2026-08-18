@@ -35,8 +35,14 @@ jobs:
       - name: Comprobar sintaxis
         run: python -m compileall -q src tests
 
+      - name: Formato
+        run: python -m ruff format --check .
+
       - name: Ruff
         run: python -m ruff check .
+
+      - name: Tipos
+        run: python -m mypy src
 
       - name: Pruebas y cobertura
         run: python -m pytest --cov=src --cov-report=term-missing --cov-report=xml

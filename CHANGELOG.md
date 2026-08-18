@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.3.7] - 2026-08-18
+
+- Optimización adaptativa de reuniones extensas y preflight multimedia.
+- Centro de procesamiento recuperable y panel de salud operativo.
+- Continuidad de compromisos y comparación local entre minutas.
+- Explicación de responsables, plazos y descripciones ambiguas.
+- Identidad de release alineada con secuencia `2003007` y `VERSION.txt`.
+- Firma Authenticode estricta con sello temporal y selección explícita de certificado.
+- Smokes aislados de instalación limpia y actualización 2.3.6 → 2.3.7.
+- Manifiesto, documentación y workflow de release actualizados.
+
 ## [2.3.6] - 2026-08-14
 
 - Preparación opcional de audio: M4A o MP3, mono y 16 kHz antes de transcribir.

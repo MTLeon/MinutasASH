@@ -20,7 +20,7 @@ Este documento sustituye como fuente de estado a las listas históricas. Los det
 
 ## Validación automatizada vigente
 
-- `scripts/Quality.ps1`: compilación, formato, lint, tipos, 253 pruebas y cobertura 71,41 % (puerta mínima: 70 %).
+- `scripts/Quality.ps1`: compilación, formato, lint, tipos, 257 pruebas y cobertura 71,42 % (puerta mínima: 70 %).
 - `scripts/Evaluate-Benchmark.ps1`: banco comparable por proveedor.
 - `scripts/Test-VisualLayouts.ps1`: 75 combinaciones de resolución/escala, sin fallos.
 - `scripts/Test-InstallerSmoke.ps1`: smoke seguro en rutas aisladas del workspace.
@@ -29,8 +29,9 @@ Este documento sustituye como fuente de estado a las listas históricas. Los det
 - Regresión Anthropic de los dos casos corregidos: salida/evaluacion/regresion-anthropic/anthropic-claude-sonnet-4-5.json (2/2, F1 1,00).
 - Comparación consolidada: salida/evaluacion/comparacion.json.
 - Estado externo sin secretos: `salida/validacion/estado_externo.json`.
-- Smoke final de instaladores firmados: `.runtime/installer-smoke/20260811-161816/resultado.json`.
-- Instalador principal SHA-256: `3206f7b12770444f789af84c3aed356cf647e8b904d22743e43fa504ad621337`.
+- Smoke final de instaladores firmados: `.runtime/installer-smoke/20260818-101129/resultado.json`.
+- Smoke de actualización 2.3.6 → 2.3.7: `.runtime/installer-upgrade-smoke/20260818-101159/resultado.json`.
+- Instalador principal SHA-256: `257f12a5799b3834d8444d56b715b12cfa8c2e1182b7cb4ed3fb100bb45cf215`.
 - Complemento Whisper SHA-256: `e1eff74a3c2ba3362a7f28f357377b2057ce6749c216b2c77a3c20be7fa6f0b8`.
 
 ## Pendientes que requieren insumos externos

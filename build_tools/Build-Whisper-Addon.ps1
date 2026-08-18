@@ -2,6 +2,7 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
 
+. (Join-Path $PSScriptRoot 'Release.ps1')
 . (Join-Path $PSScriptRoot 'Signing.ps1')
 
 $Root = Split-Path -Parent $PSScriptRoot
@@ -9,6 +10,8 @@ Set-Location $Root
 $Venv = Join-Path $Root '.whisper-buildvenv'
 $Python = Join-Path $Venv 'Scripts\python.exe'
 
+$Version = Get-MinutasReleaseVersion -Root $Root
+$SetupBaseName = "MinutasASH_Whisper_CPU_$Version"
 function Get-Sha256Hex([string]$Path) {
     $hasher = [System.Security.Cryptography.SHA256]::Create()
     try {
@@ -53,10 +56,11 @@ if (-not (Test-Path -LiteralPath $Worker)) { throw 'No se generó WhisperWorker.
 Sign-MinutasArtifact -Path $Worker
 $Iscc = Find-InnoSetup
 if (-not $Iscc) { throw 'No se encontró Inno Setup 6 o 7.' }
-& $Iscc (Join-Path $Root 'installer\MinutasASH_Whisper.iss')
+& $Iscc "/DAppVersion=$Version" (Join-Path $Root 'installer\MinutasASH_Whisper.iss')
 if ($LASTEXITCODE -ne 0) { throw 'No fue posible crear el instalador Whisper.' }
 
-$Setup = Join-Path $Root 'dist_installer\MinutasASH_Whisper_CPU_2.3.7.exe'
+$Setup = Join-Path $Root "dist_installer\$SetupBaseName.exe"
+if (-not (Test-Path -LiteralPath $Setup)) { throw 'No se encontró el instalador Whisper final.' }
 Sign-MinutasArtifact -Path $Setup
 $Hash = Get-Sha256Hex $Setup
 "$Hash  $(Split-Path -Leaf $Setup)" | Set-Content -Encoding ascii "$Setup.sha256"

@@ -2,7 +2,7 @@
 
 ## Uso y operación
 
-- `Manual_Maestro_2.3.3.md`: visión funcional completa vigente como base de 2.3.4.
+- `Manual_Maestro_2.3.3.md`: manual funcional base conservado por compatibilidad.
 - `Manual_Usuario_2.3.3.md`: operación del flujo guiado.
 - `Manual_Configuracion_2.3.3.md`: instalación, proveedores y preferencias.
 - `QOL_TECLADO_Y_TABLAS_2.3.4.md`: atajos y productividad incorporados en 2.3.4.
@@ -20,7 +20,8 @@
 
 ## Calidad y planificación
 
-- `VALIDACION_2.3.4.md`: evidencia consolidada de la entrega actual.
+- `NOTAS_VERSION_2.3.7.md`: cambios incluidos en la entrega actual.
+- `VALIDACION_2.3.7.md`: criterios y evidencia consolidada de la entrega actual.
 - `ESTADO_PENDIENTES_2026-08-11.md`: estado detallado y trabajo externo pendiente.
 - `ROADMAP.md`: evolución funcional.
 - `DEUDA.md`: deuda técnica vigente.

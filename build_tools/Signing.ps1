@@ -5,17 +5,29 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 function Get-MinutasCodeSigningCertificate {
+    $requestedThumbprint = [string]$env:MINUTAS_SIGNING_THUMBPRINT
+    $requestedThumbprint = $requestedThumbprint.Replace(' ', '').ToUpperInvariant()
     $certificates = Get-ChildItem Cert:\CurrentUser\My -CodeSigningCert |
         Where-Object { $_.HasPrivateKey -and $_.NotAfter -gt (Get-Date) } |
         Sort-Object NotAfter -Descending
-    $certificate = $certificates | Where-Object {
-        $_.Subject -eq 'CN=ASH SIPROI Internal Code Signing'
-    } | Select-Object -First 1
-    if (-not $certificate) {
-        $certificate = $certificates | Select-Object -First 1
+    if ($requestedThumbprint) {
+        $certificate = $certificates | Where-Object {
+            $_.Thumbprint.Replace(' ', '').ToUpperInvariant() -eq $requestedThumbprint
+        } | Select-Object -First 1
+    }
+    else {
+        $certificate = $certificates | Where-Object {
+            $_.Subject -eq 'CN=ASH SIPROI Internal Code Signing'
+        } | Select-Object -First 1
     }
     if (-not $certificate) {
-        throw 'No se encontró un certificado válido de firma de código en Cert:\CurrentUser\My.'
+        $selector = if ($requestedThumbprint) {
+            "con huella $requestedThumbprint"
+        }
+        else {
+            "con sujeto CN=ASH SIPROI Internal Code Signing"
+        }
+        throw "No se encontró un certificado válido de firma de código $selector en Cert:\CurrentUser\My."
     }
     return $certificate
 }
@@ -35,8 +47,15 @@ function Sign-MinutasArtifact {
             -HashAlgorithm SHA256 -TimestampServer $TimestampServer
     }
     catch {
-        Write-Warning "No fue posible aplicar sello temporal: $($_.Exception.Message). Se firmará sin sello temporal."
-        $result = Set-AuthenticodeSignature -FilePath $Path -Certificate $certificate -HashAlgorithm SHA256
+        if ($env:MINUTAS_ALLOW_UNTIMESTAMPED_SIGNATURE -ne '1') {
+            throw "No fue posible aplicar el sello temporal requerido a ${Path}: $($_.Exception.Message)"
+        }
+        Write-Warning (
+            "No fue posible aplicar sello temporal: $($_.Exception.Message). " +
+            'MINUTAS_ALLOW_UNTIMESTAMPED_SIGNATURE=1 permite continuar sin sello.'
+        )
+        $result = Set-AuthenticodeSignature -FilePath $Path -Certificate $certificate `
+            -HashAlgorithm SHA256
     }
     if ($result.Status -ne 'Valid') {
         throw "La firma no quedó válida para ${Path}: $($result.Status) $($result.StatusMessage)"

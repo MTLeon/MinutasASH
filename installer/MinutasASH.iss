@@ -1,5 +1,7 @@
 #define MyAppName "Minutas ASH"
-#define MyAppVersion "2.3.7"
+#ifndef MyAppVersion
+  #error MyAppVersion debe proporcionarse desde VERSION.txt mediante Build-Installer.ps1
+#endif
 #define MyAppPublisher "ASH Ingeniería y Proyectos"
 #define MyAppExeName "MinutasASH.exe"
 
@@ -17,7 +19,7 @@ DefaultGroupName=ASH
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 OutputDir=..\dist_installer
-OutputBaseFilename=MinutasASH_Setup_2.3.7_Online
+OutputBaseFilename=MinutasASH_Setup_{#MyAppVersion}_Online
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern

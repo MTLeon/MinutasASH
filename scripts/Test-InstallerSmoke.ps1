@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
-    [string]$MainInstaller = 'dist_installer\MinutasASH_Setup_2.3.7_Online.exe',
-    [string]$WhisperInstaller = 'dist_installer\MinutasASH_Whisper_CPU_2.3.7.exe',
+    [string]$MainInstaller = '',
+    [string]$WhisperInstaller = '',
     [ValidateRange(2, 60)][int]$StableSeconds = 6,
     [string]$OutputRoot = '.runtime\installer-smoke'
 )
@@ -9,6 +9,14 @@ param(
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
+$version = (Get-Content -LiteralPath (Join-Path $root 'VERSION.txt') -Raw).Trim()
+if (-not $MainInstaller) {
+    $MainInstaller = "dist_installer\MinutasASH_Setup_${version}_Online.exe"
+}
+if (-not $WhisperInstaller) {
+    $WhisperInstaller = "dist_installer\MinutasASH_Whisper_CPU_${version}.exe"
+}
+
 
 $mainSetup = (Resolve-Path -LiteralPath $MainInstaller).Path
 $whisperSetup = (Resolve-Path -LiteralPath $WhisperInstaller).Path
@@ -16,9 +24,13 @@ $outputDirectory = New-Item -ItemType Directory -Force -Path $OutputRoot
 $runRoot = Join-Path $outputDirectory.FullName (Get-Date -Format 'yyyyMMdd-HHmmss')
 $mainDir = Join-Path $runRoot 'main'
 $whisperDir = Join-Path $runRoot 'whisper'
-New-Item -ItemType Directory -Force -Path $mainDir, $whisperDir | Out-Null
+$dataDir = Join-Path $runRoot 'profile'
+New-Item -ItemType Directory -Force -Path $mainDir, $whisperDir, $dataDir | Out-Null
 
 $appProcess = $null
+$hadDataOverride = Test-Path Env:MINUTAS_ASH_DATA_ROOT
+$previousDataOverride = $env:MINUTAS_ASH_DATA_ROOT
+$env:MINUTAS_ASH_DATA_ROOT = $dataDir
 $result = [ordered]@{
     main_install_exit = $null
     gui_stable = $false
@@ -77,6 +89,12 @@ finally {
         $null -eq $result.whisper_uninstall_exit) {
         $result.whisper_uninstall_exit = Invoke-Setup (Join-Path $whisperDir 'unins000.exe') `
             '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART'
+    }
+    if ($hadDataOverride) {
+        $env:MINUTAS_ASH_DATA_ROOT = $previousDataOverride
+    }
+    else {
+        Remove-Item Env:MINUTAS_ASH_DATA_ROOT -ErrorAction SilentlyContinue
     }
 }
 
