@@ -5,6 +5,19 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class BuildScriptRegressionTests(unittest.TestCase):
+    def test_workflows_cancel_only_superseded_runs_for_the_same_ref(self):
+        expected_groups = {
+            "ci.yml": "group: ci-${{ github.workflow }}-${{ github.ref }}",
+            "build-windows.yml": "group: build-windows-${{ github.ref }}",
+            "release-windows.yml": "group: release-windows-${{ github.ref }}",
+        }
+
+        for filename, group in expected_groups.items():
+            workflow = (ROOT / ".github" / "workflows" / filename).read_text(encoding="utf-8")
+            self.assertIn("concurrency:", workflow)
+            self.assertIn(group, workflow)
+            self.assertIn("cancel-in-progress: true", workflow)
+
     def test_windows_build_uses_locked_dependencies_and_full_pytest_suite(self):
         workflow = (ROOT / ".github" / "workflows" / "build-windows.yml").read_text(
             encoding="utf-8"
