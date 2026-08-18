@@ -12,7 +12,7 @@ Este registro contiene deuda observada que no debe corregirse mediante cambios m
 | DT-006 | Media | Cobertura | La suite supera 72 % de cobertura y la puerta mínima ya exige 70 %. | Mantener la puerta en 70 % y planificar el avance a 80 % con cobertura focalizada de módulos críticos. | Cerrada |
 | DT-007 | Media | Estructura | El paquete raíz se denomina `src` y mezcla capas. | Migrar gradualmente a `src/minutas_ash` con adaptadores temporales. | Pendiente |
 | DT-008 | Media | Releases | Existe smoke reproducible de instalación, arranque y desinstalación; falta actualización, firma y VM limpia. | Extender `scripts/Test-InstallerSmoke.ps1` cuando haya certificado y máquina piloto. | En progreso |
-| DT-009 | Media | Dependencias | La construcción usa `requirements-build-lock.txt` fijado; runtime/desarrollo aún no tienen hashes completos. | Completar lock con hashes y actualización controlada. | En progreso |
+| DT-009 | Media | Dependencias | La construcción manual y CI usan `requirements-build-lock.txt`; Dependabot evita actualizar `pydantic-core` separado de la versión exacta exigida por Pydantic. Runtime/desarrollo aún no tienen hashes completos. | Completar locks con hashes y regenerar conjuntamente Pydantic y su núcleo. | En progreso |
 
 ## Criterio de cierre
 

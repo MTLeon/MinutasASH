@@ -1,16 +1,32 @@
 from __future__ import annotations
 
 import unittest
+import zipfile
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from src.backup_service import create_backup, restore_backup, verify_backup
+from src.backup_service import BackupError, create_backup, restore_backup, verify_backup
 from src.catalog_models import ClientRecord
 from src.database import AppDatabase
 
 
 class BackupService23Tests(unittest.TestCase):
+    def test_restore_revalidates_zip_paths_after_initial_verification(self) -> None:
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            archive_path = root / "malicious.zip"
+            with zipfile.ZipFile(archive_path, "w") as archive:
+                archive.writestr("../outside.txt", "no debe extraerse")
+
+            with (
+                patch("src.backup_service.verify_backup", return_value={}),
+                self.assertRaisesRegex(BackupError, "rutas no seguras"),
+            ):
+                restore_backup(archive_path)
+
+            self.assertFalse((root / "outside.txt").exists())
+
     def test_backup_verify_and_restore(self) -> None:
         with TemporaryDirectory() as temp:
             root = Path(temp)

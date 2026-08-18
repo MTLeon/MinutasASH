@@ -24,6 +24,21 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _safe_extract_backup(source: Path, destination: Path) -> None:
+    """Extrae un respaldo sin permitir rutas fuera del directorio temporal."""
+
+    root = destination.resolve()
+    try:
+        with zipfile.ZipFile(source, "r") as archive:
+            for member in archive.infolist():
+                target = (root / member.filename).resolve()
+                if root not in target.parents and target != root:
+                    raise BackupError("El respaldo contiene rutas no seguras.")
+            archive.extractall(root)
+    except zipfile.BadZipFile as exc:
+        raise BackupError("El archivo no es un respaldo ZIP válido.") from exc
+
+
 def create_backup(
     database: MeetingRepository,
     destination: str | Path | None = None,
@@ -89,15 +104,7 @@ def verify_backup(path: str | Path) -> dict:
         raise BackupError("No se encontró el respaldo.")
     with tempfile.TemporaryDirectory(prefix="minutas_ash_verify_") as temp_dir:
         root = Path(temp_dir)
-        try:
-            with zipfile.ZipFile(source, "r") as archive:
-                for member in archive.infolist():
-                    destination = (root / member.filename).resolve()
-                    if root.resolve() not in destination.parents and destination != root.resolve():
-                        raise BackupError("El respaldo contiene rutas no seguras.")
-                archive.extractall(root)
-        except zipfile.BadZipFile as exc:
-            raise BackupError("El archivo no es un respaldo ZIP válido.") from exc
+        _safe_extract_backup(source, root)
         manifest_path = root / "manifest.json"
         if not manifest_path.is_file():
             raise BackupError("El respaldo no contiene manifest.json.")
@@ -123,8 +130,9 @@ def restore_backup(path: str | Path) -> dict:
     source = Path(path)
     with tempfile.TemporaryDirectory(prefix="minutas_ash_restore_") as temp_dir:
         root = Path(temp_dir)
-        with zipfile.ZipFile(source, "r") as archive:
-            archive.extractall(root)
+        # La fuente puede haber cambiado después de verify_backup (por ejemplo,
+        # en una carpeta sincronizada). Se validan las rutas también al restaurar.
+        _safe_extract_backup(source, root)
         database_path().parent.mkdir(parents=True, exist_ok=True)
         config_path().parent.mkdir(parents=True, exist_ok=True)
         templates_dir().mkdir(parents=True, exist_ok=True)
