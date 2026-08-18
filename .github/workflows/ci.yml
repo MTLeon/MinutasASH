@@ -42,7 +42,9 @@ jobs:
         run: python -m ruff check .
 
       - name: Tipos
-        run: python -m mypy src
+        # El producto apunta a Windows; fija la plataforma para resolver módulos
+        # como winreg, ctypes.windll y os.startfile también en runners Ubuntu.
+        run: python -m mypy --platform win32 src
 
       - name: Pruebas y cobertura
         run: python -m pytest --cov=src --cov-report=term-missing --cov-report=xml
