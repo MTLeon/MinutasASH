@@ -20,7 +20,7 @@ tkinterdnd2==0.6.2
 typing-extensions==4.16.0
 typing-inspection==0.4.2
 urllib3==2.7.0
-pypdf==6.15.0
+pypdf==6.16.1
 pillow==12.3.0
 reportlab==4.5.1
 pytest==9.1.1
