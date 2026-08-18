@@ -1,6 +1,6 @@
-from pathlib import Path
 import tempfile
 import unittest
+from pathlib import Path
 
 from src.database import AppDatabase
 from src.models import Attendee, MeetingMetadata, MinuteAnalysis
@@ -35,6 +35,63 @@ class DatabaseTests(unittest.TestCase):
             row = db.get_meeting(meeting_id)
             self.assertEqual(row["minute_number"], "P3261-MRE-PR-00")
             self.assertEqual(row["processing_provider"], "ollama_local")
+
+            db.register_learning_sample(meeting_id, approved=True)
+            examples = db.list_learning_examples("P3261", metadata.meeting_type, limit=3)
+            self.assertEqual(len(examples), 1)
+            self.assertEqual(examples[0]["project_code"], "P3261")
+
+    def test_save_meeting_accepts_missing_project_code(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "meeting.vtt"
+            source.write_text("WEBVTT\n", encoding="utf-8")
+            db = AppDatabase(Path(tmp) / "test.db")
+            meeting_id = db.save_meeting(
+                metadata=MeetingMetadata(meeting_date="2026-08-10"),
+                analysis=None,
+                source_vtt=str(source),
+                output_dir=tmp,
+                model="test-model",
+                status="generada",
+            )
+
+            row = db.get_meeting(meeting_id)
+            self.assertEqual(row["project_code"], "")
+
+    def test_list_project_continuity_rows_excludes_tests_and_other_projects(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = AppDatabase(Path(tmp) / "test.db")
+            analysis = MinuteAnalysis(executive_summary="Seguimiento")
+            operational = db.save_meeting(
+                metadata=MeetingMetadata(project_code="P100", meeting_date="2026-08-12"),
+                analysis=analysis,
+                source_vtt="p100.vtt",
+                output_dir=tmp,
+                model="test",
+                status="generada",
+            )
+            db.save_meeting(
+                metadata=MeetingMetadata(project_code="P100", meeting_date="2026-08-13"),
+                analysis=analysis,
+                source_vtt="test.vtt",
+                output_dir=tmp,
+                model="test",
+                status="generada",
+                is_test=True,
+            )
+            db.save_meeting(
+                metadata=MeetingMetadata(project_code="P200", meeting_date="2026-08-14"),
+                analysis=analysis,
+                source_vtt="p200.vtt",
+                output_dir=tmp,
+                model="test",
+                status="generada",
+            )
+
+            rows = db.list_project_continuity_rows("p100")
+
+            self.assertEqual([row["id"] for row in rows], [operational])
+            self.assertEqual(rows[0]["project_code"], "P100")
 
 
 if __name__ == "__main__":

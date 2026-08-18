@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from typing import Any, Callable, TypeVar
+from collections.abc import Callable
+from typing import Any, TypeVar
 
 from pydantic import BaseModel
 
 from src.ollama_client import OllamaClient
-
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -23,9 +23,6 @@ class OllamaLocalProvider:
         temperature: float,
         context_length: int,
         keep_alive: str,
-        max_output_tokens: int = 900,
-        consolidation_output_tokens: int = 1200,
-        recovery_output_tokens: int = 700,
     ) -> None:
         self.model = model
         self.client = OllamaClient(
@@ -35,19 +32,10 @@ class OllamaLocalProvider:
             temperature,
             context_length,
             keep_alive,
-            max_output_tokens,
-            consolidation_output_tokens,
-            recovery_output_tokens,
         )
 
     def check_connection(self) -> None:
         self.client.check_connection()
-
-    def warmup(self) -> None:
-        self.client.warmup()
-
-    def unload(self) -> None:
-        self.client.unload()
 
     def configure_runtime(
         self,

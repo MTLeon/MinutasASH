@@ -52,7 +52,9 @@ class ManualSourceDialog(tk.Toplevel):
             variable=self.source_type_var,
             value="notes",
         ).grid(row=0, column=1, sticky="w", padx=(16, 0))
-        ttk.Label(options, text="Nombre de referencia").grid(row=0, column=2, sticky="e", padx=(24, 8))
+        ttk.Label(options, text="Nombre de referencia").grid(
+            row=0, column=2, sticky="e", padx=(24, 8)
+        )
         self.name_var = tk.StringVar(value=default_name)
         ttk.Entry(options, textvariable=self.name_var).grid(row=0, column=3, sticky="ew")
 

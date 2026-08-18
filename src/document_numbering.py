@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import re
-from typing import Iterable
-
+from collections.abc import Iterable
+from dataclasses import dataclass
 
 _COMPONENT_RE = re.compile(r"[^A-Z0-9]+")
 
@@ -19,7 +18,7 @@ class NumberingPolicy:
     discipline: str = "PR"
     digits: int = 2
 
-    def normalized(self) -> "NumberingPolicy":
+    def normalized(self) -> NumberingPolicy:
         return NumberingPolicy(
             document_type=normalize_component(self.document_type, "MRE"),
             discipline=normalize_component(self.discipline, "PR"),
@@ -38,10 +37,7 @@ def build_minute_number(
         raise ValueError("Ingrese un código de proyecto para sugerir el número de minuta.")
     if int(sequence) < 0:
         raise ValueError("El correlativo no puede ser negativo.")
-    return (
-        f"{project}-{policy.document_type}-{policy.discipline}-"
-        f"{int(sequence):0{policy.digits}d}"
-    )
+    return f"{project}-{policy.document_type}-{policy.discipline}-{int(sequence):0{policy.digits}d}"
 
 
 def _sequence_pattern(project_code: str, policy: NumberingPolicy) -> re.Pattern[str]:

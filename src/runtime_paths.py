@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
 import sys
-
+from pathlib import Path
 
 APP_VENDOR = "ASH"
 APP_NAME = "MinutasASH"
@@ -27,7 +26,7 @@ def resource_path(relative: str | Path) -> Path:
     """Ruta de solo lectura a un recurso incluido en el proyecto/EXE."""
     relative_path = Path(relative)
     if hasattr(sys, "_MEIPASS"):
-        return Path(getattr(sys, "_MEIPASS")) / relative_path
+        return Path(sys._MEIPASS) / relative_path
     return source_root() / relative_path
 
 
@@ -41,8 +40,18 @@ def roaming_app_data() -> Path:
     return base / APP_VENDOR / APP_NAME
 
 
+def _configured_data_root() -> Path | None:
+    value = os.environ.get("MINUTAS_ASH_DATA_ROOT", "").strip()
+    if not value:
+        return None
+    return Path(value).expanduser().resolve()
+
+
 def user_data_root() -> Path:
     """Datos editables y privados de la aplicación."""
+    configured = _configured_data_root()
+    if configured is not None:
+        return configured
     if not is_frozen():
         return source_root() / ".runtime"
     return local_app_data()
@@ -67,6 +76,9 @@ def default_output_dir() -> Path:
 
 
 def config_path() -> Path:
+    configured = _configured_data_root()
+    if configured is not None:
+        return configured / "config.json"
     return roaming_app_data() / "config.json" if is_frozen() else user_data_root() / "config.json"
 
 
@@ -82,6 +94,10 @@ def drafts_dir() -> Path:
     return user_data_root() / "drafts"
 
 
+def inbox_dir() -> Path:
+    return user_data_root() / "inbox"
+
+
 def cache_dir() -> Path:
     return user_data_root() / "cache"
 
@@ -90,6 +106,8 @@ def checkpoints_dir() -> Path:
     return user_data_root() / "checkpoints"
 
 
+def jobs_dir() -> Path:
+    return user_data_root() / "jobs"
 
 
 def managed_runtime_dir() -> Path:
@@ -106,7 +124,6 @@ def managed_models_dir() -> Path:
 
 def downloads_dir() -> Path:
     return user_data_root() / "downloads"
-
 
 
 def templates_dir() -> Path:
@@ -128,6 +145,7 @@ def support_dir() -> Path:
 def trash_dir() -> Path:
     return user_data_root() / "trash" / "meetings"
 
+
 def setup_state_path() -> Path:
     return user_data_root() / "setup_state.json"
 
@@ -142,8 +160,10 @@ def ensure_user_directories() -> None:
         database_path().parent,
         logs_dir(),
         drafts_dir(),
+        inbox_dir(),
         cache_dir(),
         checkpoints_dir(),
+        jobs_dir(),
         records_dir(),
         managed_runtime_dir(),
         managed_models_dir(),

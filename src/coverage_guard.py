@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
-from datetime import date, datetime, timedelta
 import re
 import unicodedata
+from dataclasses import asdict, dataclass
+from datetime import date, datetime, timedelta
+from typing import Literal, cast
 
 from src.models import MeetingItem, MeetingMetadata, MinuteAnalysis, NextMeeting
 from src.vtt_reader import TranscriptSegment
@@ -143,6 +144,13 @@ _FIRST_PERSON_RE = re.compile(
 _PROJECT_CODE_RE = re.compile(r"\b(?P<code>[2-9]\d{3})\b")
 
 
+_VAGUE_ACTION_RE = re.compile(
+    r"^(?:tenemos\s+que\s+revisar\s+en\s+conjunto\b|"
+    r"hay\s+que\s+hacer(?:lo|se)?(?:\s+si\s+o\s+si)?[.!]?\s*$)|"
+    r"\bvamos\s+a\s+tener\s+que\s+ponerlo\s+ahi\b",
+    re.I,
+)
+
 _LOW_VALUE_RE = re.compile(
     r"^(?:hola|hello|al[oó]|buenos\s+d[ií]as|buenas\s+tardes|"
     r"c[oó]mo\s+est[aá]s|prueba(?:\s+de\s+audio)?|\d+[\s.,-]*)+$",
@@ -156,7 +164,10 @@ _DATE_PATTERNS = (
         re.I,
     ),
     re.compile(r"\b(?:durante\s+)?(?:la\s+)?(?:pr[oó]xima|otra)\s+(?:semana|quincena|mes)\b", re.I),
-    re.compile(r"\ba\s+partir\s+del\s+(?:lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo)\b", re.I),
+    re.compile(
+        r"\ba\s+partir\s+del\s+(?:lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo)\b",
+        re.I,
+    ),
     re.compile(r"\b(?:a\s+)?mitad\s+de\s+semana|entre\s+mi[eé]rcoles\s+y\s+jueves\b", re.I),
     re.compile(r"\bfin\s+de\s+a[nñ]o\b", re.I),
     re.compile(r"\b(?:esta|la\s+presente)\s+semana\b", re.I),
@@ -176,16 +187,41 @@ _TIME_RE = re.compile(
 )
 
 _STOPWORDS = {
-    "a", "al", "ante", "con", "de", "del", "durante", "el", "en", "es",
-    "la", "las", "lo", "los", "para", "por", "que", "se", "su", "un",
-    "una", "y", "ya", "como", "ser", "sera", "quedara", "queda",
+    "a",
+    "al",
+    "ante",
+    "con",
+    "de",
+    "del",
+    "durante",
+    "el",
+    "en",
+    "es",
+    "la",
+    "las",
+    "lo",
+    "los",
+    "para",
+    "por",
+    "que",
+    "se",
+    "su",
+    "un",
+    "una",
+    "y",
+    "ya",
+    "como",
+    "ser",
+    "sera",
+    "quedara",
+    "queda",
 }
 
 
 def _timestamp_seconds(value: str) -> float:
     parts = value.replace(",", ".").split(":")
     if len(parts) == 2:
-        hours = 0
+        hours = "0"
         minutes, seconds = parts
     else:
         hours, minutes, seconds = parts
@@ -200,9 +236,7 @@ def _normalize(value: str) -> str:
 
 def _tokens(value: str) -> set[str]:
     return {
-        token
-        for token in re.findall(r"[a-z0-9]{2,}", _normalize(value))
-        if token not in _STOPWORDS
+        token for token in re.findall(r"[a-z0-9]{2,}", _normalize(value)) if token not in _STOPWORDS
     }
 
 
@@ -233,7 +267,9 @@ def _split_clauses(value: str) -> list[str]:
         text,
         flags=re.I,
     )
-    raw_clauses = [clause for clause in (_clean_clause(part) for part in text.splitlines()) if clause]
+    raw_clauses = [
+        clause for clause in (_clean_clause(part) for part in text.splitlines()) if clause
+    ]
     # Teams puede cortar una pregunta dependiente justo antes de "tenemos que".
     # Se vuelve a unir para no transformar una condición por confirmar en un
     # compromiso ya asignado.
@@ -338,6 +374,7 @@ def extract_action_candidates(
                 len(normalized_clause) < 8
                 or _LOW_VALUE_RE.fullmatch(normalized_clause)
                 or _DANGLING_CLAUSE_RE.fullmatch(clause)
+                or _VAGUE_ACTION_RE.search(_normalize(clause))
                 or len(semantic_tokens) < 2
             ):
                 continue
@@ -393,9 +430,7 @@ def _category_compatible(candidate: ActionCandidate, item: MeetingItem) -> bool:
         return True
     if candidate.category_hint == "acuerdo" and item.category == "informativo":
         return True
-    if _NEXT_MEETING_RE.search(candidate.text) and item.category == "informativo":
-        return True
-    return False
+    return bool(_NEXT_MEETING_RE.search(candidate.text) and item.category == "informativo")
 
 
 def _similarity(left: str, right: str) -> float:
@@ -460,13 +495,28 @@ def _extract_due_date_text(text: str) -> str | None:
 
 
 _MONTHS = {
-    "enero": 1, "febrero": 2, "marzo": 3, "abril": 4, "mayo": 5,
-    "junio": 6, "julio": 7, "agosto": 8, "septiembre": 9,
-    "setiembre": 9, "octubre": 10, "noviembre": 11, "diciembre": 12,
+    "enero": 1,
+    "febrero": 2,
+    "marzo": 3,
+    "abril": 4,
+    "mayo": 5,
+    "junio": 6,
+    "julio": 7,
+    "agosto": 8,
+    "septiembre": 9,
+    "setiembre": 9,
+    "octubre": 10,
+    "noviembre": 11,
+    "diciembre": 12,
 }
 _WEEKDAYS = {
-    "lunes": 0, "martes": 1, "miercoles": 2, "jueves": 3,
-    "viernes": 4, "sabado": 5, "domingo": 6,
+    "lunes": 0,
+    "martes": 1,
+    "miercoles": 2,
+    "jueves": 3,
+    "viernes": 4,
+    "sabado": 5,
+    "domingo": 6,
 }
 
 
@@ -555,7 +605,11 @@ def _extract_responsible(text: str, metadata: MeetingMetadata) -> str | None:
     subject = re.sub(r"\s+", " ", match.group("subject")).strip()
     if _normalize(subject) in {"el cliente", "la contraparte"}:
         client = (metadata.client or "").strip()
-        if client and _normalize(client) not in {"cliente", "por confirmar", "cliente por confirmar"}:
+        if client and _normalize(client) not in {
+            "cliente",
+            "por confirmar",
+            "cliente por confirmar",
+        }:
             return client
         return "Cliente"
     if _normalize(subject) == "ash":
@@ -606,7 +660,7 @@ def _candidate_to_item(
     due_date_iso = _resolve_date_iso(candidate.text, metadata) if category == "compromiso" else None
     return MeetingItem(
         project_code=candidate.project_code,
-        category=category,
+        category=cast(Literal["informativo", "acuerdo", "compromiso", "pendiente"], category),
         description=description,
         source_speaker=candidate.speaker or None,
         responsible=responsible,
@@ -639,8 +693,7 @@ def apply_deterministic_fallback(
         if _NEXT_MEETING_RE.search(candidate.text) and not analysis.next_meeting:
             analysis.next_meeting = _next_meeting_from_candidate(candidate, metadata)
         analysis.warnings.append(
-            "Punto recuperado por control de cobertura; confirme su redacción: "
-            f"{candidate.text}"
+            f"Punto recuperado por control de cobertura; confirme su redacción: {candidate.text}"
         )
         added += 1
     return analysis, added

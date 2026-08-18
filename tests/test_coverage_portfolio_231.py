@@ -10,15 +10,21 @@ class PortfolioCoverage231Tests(unittest.TestCase):
     def _segments(self):
         return [
             TranscriptSegment(
-                "00:00:00.000", "00:00:05.000", "Mauricio",
+                "00:00:00.000",
+                "00:00:05.000",
+                "Mauricio",
                 "En el proyecto 3261 yo le voy a consultar a Contacto Cliente por el segundo pago.",
             ),
             TranscriptSegment(
-                "00:00:06.000", "00:00:12.000", "Iván",
+                "00:00:06.000",
+                "00:00:12.000",
+                "Iván",
                 "Estamos a la espera de la orden de compra.",
             ),
             TranscriptSegment(
-                "00:00:13.000", "00:00:20.000", "Iván",
+                "00:00:13.000",
+                "00:00:20.000",
+                "Iván",
                 "Si la próxima semana no tenemos respuesta, entonces tenemos que generar el TOP y cerrar técnicamente.",
             ),
         ]
@@ -46,11 +52,15 @@ class PortfolioCoverage231Tests(unittest.TestCase):
     def test_project_context_changes_when_a_new_code_is_introduced(self):
         segments = self._segments() + [
             TranscriptSegment(
-                "00:00:21.000", "00:00:27.000", "Esteban",
+                "00:00:21.000",
+                "00:00:27.000",
+                "Esteban",
                 "Ahora, para el 3271, tengo que llamar al cliente.",
             ),
             TranscriptSegment(
-                "00:00:28.000", "00:00:34.000", "Esteban",
+                "00:00:28.000",
+                "00:00:34.000",
+                "Esteban",
                 "Después voy a enviar un correo con lo acordado.",
             ),
         ]

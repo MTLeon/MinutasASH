@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from tempfile import TemporaryDirectory
-from pathlib import Path
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from src.models import ChunkAnalysis, MeetingItem
 from src.processing_checkpoint import (
@@ -51,6 +51,7 @@ class ProcessingCheckpoint232Tests(unittest.TestCase):
             path = root / "old.json"
             path.write_text("{}", encoding="utf-8")
             import os
+
             os.utime(path, (1, 1))
             store = ProcessingCheckpointStore(root)
             self.assertEqual(store.prune(1), 1)

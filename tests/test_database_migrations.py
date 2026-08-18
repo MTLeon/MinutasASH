@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from pathlib import Path
 import sqlite3
 import tempfile
 import unittest
+from pathlib import Path
 
-from src.database import AppDatabase, CURRENT_SCHEMA_VERSION
+from src.database import CURRENT_SCHEMA_VERSION, AppDatabase
 
 
 class DatabaseMigrationTests(unittest.TestCase):
@@ -58,11 +58,15 @@ class DatabaseMigrationTests(unittest.TestCase):
             connection.close()
             self.assertIn("source_sha256", columns)
             self.assertIn("document_provider", columns)
+            self.assertIn("pdf_path", columns)
             self.assertIn("processing_provider", columns)
             self.assertIn("processing_provider_name", columns)
             connection = sqlite3.connect(path)
             project_columns = {row[1] for row in connection.execute("PRAGMA table_info(projects)")}
-            tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            tables = {
+                row[0]
+                for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            }
             connection.close()
             self.assertIn("document_type", project_columns)
             self.assertIn("discipline", project_columns)

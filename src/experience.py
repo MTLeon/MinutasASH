@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Reglas puras de experiencia de usuario para Minutas ASH.
 
 Este módulo no depende de Tkinter. Centraliza etiquetas, perfiles de reunión y
@@ -7,11 +5,12 @@ criterios de completitud para que las vistas esencial y avanzada compartan las
 mismas reglas y puedan probarse sin una interfaz gráfica.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from typing import Literal
 
 from src.models import Attendee, MeetingMetadata
-
 
 InterfaceMode = Literal["essential", "advanced"]
 MeetingType = Literal["cliente", "interna", "kom", "seguimiento", "cartera", "otra"]
@@ -91,7 +90,7 @@ def normalize_meeting_type(value: object) -> MeetingType:
     normalized = aliases.get(text, text)
     if normalized not in MEETING_TYPE_LABELS:
         return "cliente"
-    return normalized  # type: ignore[return-value]
+    return normalized
 
 
 def meeting_type_label(value: object) -> str:
@@ -153,7 +152,16 @@ def attendee_display_columns(mode: object) -> tuple[str, ...]:
 
 def review_display_columns(mode: object) -> tuple[str, ...]:
     if normalize_interface_mode(mode) == "advanced":
-        return ("n", "status", "quality", "project", "category", "description", "responsible", "date")
+        return (
+            "n",
+            "status",
+            "quality",
+            "project",
+            "category",
+            "description",
+            "responsible",
+            "date",
+        )
     return ("status", "project", "description", "responsible", "date")
 
 

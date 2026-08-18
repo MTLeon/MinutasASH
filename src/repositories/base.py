@@ -3,7 +3,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Protocol
 
-from src.catalog_models import ClientRecord, ContactRecord, OrganizationRecord, TemplateManifest, TemplateValidation
+from src.catalog_models import (
+    ClientRecord,
+    ContactRecord,
+    OrganizationRecord,
+    TemplateManifest,
+    TemplateValidation,
+)
 from src.models import Attendee, MeetingMetadata, MinuteAnalysis
 
 
@@ -62,6 +68,22 @@ class MeetingRepository(Protocol):
     def list_audit_events(self, limit: int = 500) -> list[dict]: ...
     def integrity_check(self) -> tuple[bool, str]: ...
     def backup_to(self, destination: str | Path) -> Path: ...
+    def get_schema_version(self) -> int: ...
+    def move_meeting_to_trash(
+        self, meeting_id: int, reason: str, trash_path: str | None, original_output_dir: str | None
+    ) -> None: ...
+    def restore_meeting_from_trash(
+        self, meeting_id: int, output_dir: str | None = None
+    ) -> None: ...
+    def delete_meeting_permanently(self, meeting_id: int) -> None: ...
+    def list_learning_examples(
+        self,
+        project_code: str | None = None,
+        meeting_type: str | None = None,
+        limit: int = 3,
+        client: str | None = None,
+        query_text: str | None = None,
+    ) -> list[dict]: ...
     def save_meeting(
         self,
         metadata: MeetingMetadata,
@@ -72,15 +94,39 @@ class MeetingRepository(Protocol):
         status: str,
         docx_path: str | None = None,
         json_path: str | None = None,
+        pdf_path: str | None = None,
         meeting_id: int | None = None,
         app_version: str | None = None,
         document_provider: str | None = None,
         processing_provider: str | None = None,
         processing_provider_name: str | None = None,
         last_error: str | None = None,
+        source_type: str | None = None,
+        source_quality: str | None = None,
+        is_test: bool = False,
         template_version_id: int | None = None,
         template_key: str | None = None,
         template_version_label: str | None = None,
     ) -> int: ...
-    def list_meetings(self, limit: int = 200) -> list[dict]: ...
+    def list_project_continuity_rows(self, project_code: str, limit: int = 40) -> list[dict]: ...
+    def list_meetings(self, limit: int = 200, view: str = "active") -> list[dict]: ...
+    def set_meeting_test(self, meeting_id: int, is_test: bool) -> None: ...
+    def list_cleanup_candidates(self, limit: int = 200) -> list[dict]: ...
+    def list_technical_terms(self, project_code: str | None = None) -> list[dict]: ...
+    def record_correction_event(
+        self,
+        meeting_id: int | None,
+        item_index: int | None,
+        correction_type: str,
+        before: dict | None,
+        after: dict | None,
+        approved_for_learning: bool = False,
+    ) -> int: ...
+    def register_learning_sample(
+        self,
+        meeting_id: int,
+        approved: bool = True,
+        anonymized: bool = False,
+        approved_by: str | None = None,
+    ) -> int: ...
     def get_meeting(self, meeting_id: int) -> dict | None: ...

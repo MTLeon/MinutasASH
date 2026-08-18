@@ -1,29 +1,51 @@
 from __future__ import annotations
 
 import csv
+import re
+import unicodedata
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 from src.catalog_models import ClientRecord, ContactRecord, OrganizationRecord, ProjectCatalogRecord
 from src.database import AppDatabase, normalize_name
 
-
 CATALOG_HEADERS: dict[str, list[str]] = {
-    "contacts": [
-        "name", "initials", "email", "role", "organization", "phone", "active", "notes"
-    ],
+    "contacts": ["name", "initials", "email", "role", "organization", "phone", "active", "notes"],
     "clients": [
-        "legal_name", "short_name", "tax_id", "address", "primary_contact_name",
-        "primary_contact_email", "primary_contact_phone", "active", "notes"
+        "legal_name",
+        "short_name",
+        "tax_id",
+        "address",
+        "primary_contact_name",
+        "primary_contact_email",
+        "primary_contact_phone",
+        "active",
+        "notes",
     ],
     "organizations": [
-        "legal_name", "short_name", "tax_id", "address", "email", "phone", "active", "notes"
+        "legal_name",
+        "short_name",
+        "tax_id",
+        "address",
+        "email",
+        "phone",
+        "active",
+        "notes",
     ],
     "projects": [
-        "code", "description", "client", "project_manager", "approver",
-        "default_minute_taker", "default_location", "document_type", "discipline",
-        "folder_path", "active"
+        "code",
+        "description",
+        "client",
+        "project_manager",
+        "approver",
+        "default_minute_taker",
+        "default_location",
+        "document_type",
+        "discipline",
+        "folder_path",
+        "active",
     ],
 }
 
@@ -73,7 +95,11 @@ def _read_xlsx(path: Path) -> list[dict[str, Any]]:
             return []
         headers = [str(value or "").strip() for value in rows[0]]
         return [
-            {headers[index]: value for index, value in enumerate(row) if index < len(headers) and headers[index]}
+            {
+                headers[index]: value
+                for index, value in enumerate(row)
+                if index < len(headers) and headers[index]
+            }
             for row in rows[1:]
             if any(value not in (None, "") for value in row)
         ]
@@ -91,6 +117,60 @@ def read_rows(path: str | Path) -> list[dict[str, Any]]:
     if suffix in {".xlsx", ".xlsm"}:
         return _read_xlsx(source)
     raise ValueError("Solo se admiten archivos CSV o XLSX.")
+
+
+def _header_key(value: Any) -> str:
+    text = unicodedata.normalize("NFKD", str(value or ""))
+    text = "".join(char for char in text if not unicodedata.combining(char)).casefold()
+    return re.sub(r"[^a-z0-9]+", "", text)
+
+
+def _adapt_contact_row(row: dict[str, Any]) -> dict[str, Any]:
+    normalized = {_header_key(key): value for key, value in row.items()}
+
+    def first(*keys: str) -> Any:
+        return next(
+            (normalized[key] for key in keys if normalized.get(key) not in (None, "")), None
+        )
+
+    name = first("name", "nombre", "nombrecompleto", "contacto")
+    if not name:
+        name = " ".join(
+            str(value).strip()
+            for value in (
+                first("primern", "primernombre"),
+                first("segundon", "segundonombre"),
+                first("apellidopat", "apellidopaterno"),
+                first("apellidomat", "apellidomaterno"),
+            )
+            if value not in (None, "")
+        )
+    email = first("email", "correo", "correoelectronico")
+    if str(email or "").strip().casefold() in {"", "x", "n/a", "na", "-"}:
+        email = None
+    notes: list[str] = []
+    tax_id = first("rut", "taxid")
+    source_id = first("usrid", "idusuario")
+    if tax_id:
+        notes.append(f"RUT: {str(tax_id).strip()}")
+    if source_id:
+        notes.append(f"ID origen: {source_id}")
+    return {
+        **row,
+        "name": str(name or "").strip(),
+        "initials": first("initials", "iniciales", "nick"),
+        "email": email,
+        "role": first("role", "cargo", "puesto"),
+        "organization": first("organization", "organizacion", "empresa")
+        or ("ASH" if any(key in normalized for key in {"usrid", "nick", "rut"}) else None),
+        "phone": first("phone", "telefono", "movil"),
+        "active": first("active", "activo", "estado"),
+        "notes": first("notes", "notas", "observaciones") or "; ".join(notes) or None,
+    }
+
+
+def adapt_catalog_row(catalog: str, row: dict[str, Any]) -> dict[str, Any]:
+    return _adapt_contact_row(row) if catalog == "contacts" else row
 
 
 def _write_csv(path: Path, headers: list[str], rows: Iterable[dict[str, Any]]) -> Path:
@@ -123,13 +203,21 @@ def _write_xlsx(path: Path, headers: list[str], rows: Iterable[dict[str, Any]]) 
             cell.alignment = Alignment(horizontal="center")
         for index, header in enumerate(headers, start=1):
             width = max(len(header) + 2, 12)
-            values = [str(sheet.cell(row=row, column=index).value or "") for row in range(2, min(sheet.max_row, 100) + 1)]
+            values = [
+                str(sheet.cell(row=row, column=index).value or "")
+                for row in range(2, min(sheet.max_row, 100) + 1)
+            ]
             if values:
                 width = min(max(width, max(len(value) for value in values) + 2), 42)
             sheet.column_dimensions[sheet.cell(row=1, column=index).column_letter].width = width
         if sheet.max_row >= 2 and sheet.max_column >= 1:
-            table = Table(displayName="CatalogoASH", ref=f"A1:{sheet.cell(sheet.max_row, sheet.max_column).coordinate}")
-            table.tableStyleInfo = TableStyleInfo(name="TableStyleMedium2", showRowStripes=True, showColumnStripes=False)
+            table = Table(
+                displayName="CatalogoASH",
+                ref=f"A1:{sheet.cell(sheet.max_row, sheet.max_column).coordinate}",
+            )
+            table.tableStyleInfo = TableStyleInfo(
+                name="TableStyleMedium2", showRowStripes=True, showColumnStripes=False
+            )
             sheet.add_table(table)
         sheet.freeze_panes = "A2"
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -140,7 +228,6 @@ def _write_xlsx(path: Path, headers: list[str], rows: Iterable[dict[str, Any]]) 
         workbook.close()
 
 
-
 def create_import_template(catalog: str, destination: str | Path) -> Path:
     """Crea un archivo vacío con los encabezados admitidos por el importador."""
     if catalog not in CATALOG_HEADERS:
@@ -149,6 +236,7 @@ def create_import_template(catalog: str, destination: str | Path) -> Path:
     if target.suffix.lower() == ".csv":
         return _write_csv(target, CATALOG_HEADERS[catalog], [])
     return _write_xlsx(target, CATALOG_HEADERS[catalog], [])
+
 
 def export_catalog(database: AppDatabase, catalog: str, destination: str | Path) -> Path:
     if catalog not in CATALOG_HEADERS:
@@ -171,21 +259,30 @@ def export_catalog(database: AppDatabase, catalog: str, destination: str | Path)
     return result
 
 
-
 def _record_exists(database: AppDatabase, catalog: str, values: dict[str, Any]) -> bool:
     if catalog == "contacts":
         key = normalize_name(str(values.get("name") or ""))
-        return bool(key) and any(normalize_name(row.get("name") or "") == key for row in database.list_contact_records(include_inactive=True))
+        return bool(key) and any(
+            normalize_name(row.get("name") or "") == key
+            for row in database.list_contact_records(include_inactive=True)
+        )
     if catalog == "clients":
         key = normalize_name(str(values.get("legal_name") or ""))
-        return bool(key) and any(normalize_name(row.get("legal_name") or "") == key for row in database.list_clients(include_inactive=True))
+        return bool(key) and any(
+            normalize_name(row.get("legal_name") or "") == key
+            for row in database.list_clients(include_inactive=True)
+        )
     if catalog == "organizations":
         key = normalize_name(str(values.get("legal_name") or ""))
-        return bool(key) and any(normalize_name(row.get("legal_name") or "") == key for row in database.list_organizations(include_inactive=True))
+        return bool(key) and any(
+            normalize_name(row.get("legal_name") or "") == key
+            for row in database.list_organizations(include_inactive=True)
+        )
     if catalog == "projects":
         code = str(values.get("code") or "").strip().upper()
         return bool(code) and database.get_project(code) is not None
     return False
+
 
 def _import_one(database: AppDatabase, catalog: str, values: dict[str, Any]) -> None:
     if catalog == "contacts":
@@ -228,7 +325,7 @@ def _import_one(database: AppDatabase, catalog: str, values: dict[str, Any]) -> 
             )
         )
     elif catalog == "projects":
-        record = ProjectCatalogRecord(
+        project_record = ProjectCatalogRecord(
             code=str(values.get("code") or ""),
             description=values.get("description") or None,
             client=values.get("client") or None,
@@ -241,7 +338,7 @@ def _import_one(database: AppDatabase, catalog: str, values: dict[str, Any]) -> 
             folder_path=values.get("folder_path") or None,
             active=_bool_value(values.get("active")),
         )
-        database.upsert_project_profile(record.model_dump())
+        database.upsert_project_profile(project_record.model_dump())
     else:
         raise ValueError("Catálogo no compatible.")
 
@@ -261,6 +358,7 @@ def import_catalog(
     summary = ImportSummary(catalog=catalog, total_rows=len(rows))
     for row_number, row in enumerate(rows, start=2):
         try:
+            row = adapt_catalog_row(catalog, row)
             if duplicate_policy == "skip" and _record_exists(database, catalog, row):
                 summary.duplicates += 1
                 summary.skipped += 1
@@ -275,6 +373,12 @@ def import_catalog(
         catalog,
         str(source_path),
         None,
-        {"total": summary.total_rows, "imported": summary.imported, "skipped": summary.skipped, "duplicates": summary.duplicates, "duplicate_policy": duplicate_policy},
+        {
+            "total": summary.total_rows,
+            "imported": summary.imported,
+            "skipped": summary.skipped,
+            "duplicates": summary.duplicates,
+            "duplicate_policy": duplicate_policy,
+        },
     )
     return summary

@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
 import hashlib
 import json
-from pathlib import Path
 import shutil
 import tempfile
 import zipfile
+from datetime import datetime, timedelta
+from pathlib import Path
 
-from src.database import AppDatabase
+from src.repositories.base import MeetingRepository
 from src.runtime_paths import backups_dir, config_path, database_path, templates_dir
 
 
@@ -25,14 +25,16 @@ def _sha256(path: Path) -> str:
 
 
 def create_backup(
-    database: AppDatabase,
+    database: MeetingRepository,
     destination: str | Path | None = None,
     *,
     app_version: str | None = None,
 ) -> Path:
     backups_dir().mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    target = Path(destination) if destination else backups_dir() / f"MinutasASH_Backup_{timestamp}.zip"
+    target = (
+        Path(destination) if destination else backups_dir() / f"MinutasASH_Backup_{timestamp}.zip"
+    )
     target.parent.mkdir(parents=True, exist_ok=True)
 
     ok, message = database.integrity_check()
@@ -47,7 +49,7 @@ def create_backup(
         data_dir.mkdir()
         config_dir.mkdir()
 
-        db_copy = database.backup_to(data_dir / "minutas.db")
+        database.backup_to(data_dir / "minutas.db")
         if config_path().is_file():
             shutil.copy2(config_path(), config_dir / "config.json")
         if templates_dir().is_dir():
@@ -152,7 +154,11 @@ def restore_backup(path: str | Path) -> dict:
 
 def prune_backups(retention_count: int = 5) -> list[Path]:
     retention = max(1, min(int(retention_count), 100))
-    files = sorted(backups_dir().glob("MinutasASH_Backup_*.zip"), key=lambda path: path.stat().st_mtime, reverse=True)
+    files = sorted(
+        backups_dir().glob("MinutasASH_Backup_*.zip"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
     removed: list[Path] = []
     for path in files[retention:]:
         try:
@@ -164,7 +170,7 @@ def prune_backups(retention_count: int = 5) -> list[Path]:
 
 
 def maybe_create_automatic_backup(
-    database: AppDatabase,
+    database: MeetingRepository,
     *,
     enabled: bool,
     interval_days: int,
@@ -174,7 +180,11 @@ def maybe_create_automatic_backup(
     if not enabled:
         return None
     backups_dir().mkdir(parents=True, exist_ok=True)
-    existing = sorted(backups_dir().glob("MinutasASH_Backup_*.zip"), key=lambda path: path.stat().st_mtime, reverse=True)
+    existing = sorted(
+        backups_dir().glob("MinutasASH_Backup_*.zip"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
     if existing:
         modified = datetime.fromtimestamp(existing[0].stat().st_mtime)
         if datetime.now() - modified < timedelta(days=max(1, int(interval_days))):

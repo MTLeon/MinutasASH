@@ -27,6 +27,52 @@ jobs:
         shell: pwsh
         run: choco install innosetup --no-progress -y
 
+      - name: Validar versión del tag
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          $version = (Get-Content VERSION.txt -Raw).Trim()
+          $expected = "v$version"
+          if ("${{ github.ref_name }}" -ne $expected) {
+            throw "El tag ${{ github.ref_name }} no coincide con VERSION.txt ($expected)."
+          }
+      - name: Importar certificado de firma
+        shell: pwsh
+        env:
+          CODE_SIGNING_PFX_BASE64: ${{ secrets.CODE_SIGNING_PFX_BASE64 }}
+          CODE_SIGNING_PFX_PASSWORD: ${{ secrets.CODE_SIGNING_PFX_PASSWORD }}
+          CODE_SIGNING_THUMBPRINT: ${{ secrets.CODE_SIGNING_THUMBPRINT }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:CODE_SIGNING_PFX_BASE64)) {
+            throw "Falta el secreto CODE_SIGNING_PFX_BASE64 requerido para publicar una release firmada."
+          }
+          if ([string]::IsNullOrWhiteSpace($env:CODE_SIGNING_PFX_PASSWORD)) {
+            throw "Falta el secreto CODE_SIGNING_PFX_PASSWORD requerido para importar el certificado."
+          }
+          $pfxPath = Join-Path $env:RUNNER_TEMP "minutas-signing.pfx"
+          try {
+            [IO.File]::WriteAllBytes(
+              $pfxPath,
+              [Convert]::FromBase64String($env:CODE_SIGNING_PFX_BASE64)
+            )
+            $password = ConvertTo-SecureString $env:CODE_SIGNING_PFX_PASSWORD -AsPlainText -Force
+            $imported = Import-PfxCertificate -FilePath $pfxPath `
+              -CertStoreLocation Cert:\CurrentUser\My -Password $password
+            $certificate = @($imported) | Where-Object HasPrivateKey | Select-Object -First 1
+            if (-not $certificate) {
+              throw "El certificado importado no contiene una clave privada."
+            }
+            "MINUTAS_SIGNING_THUMBPRINT=$($certificate.Thumbprint)" | Out-File `
+              -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            if ($env:CODE_SIGNING_THUMBPRINT -and
+                $certificate.Thumbprint -ne $env:CODE_SIGNING_THUMBPRINT.Replace(" ", "")) {
+              throw "La huella importada no coincide con CODE_SIGNING_THUMBPRINT."
+            }
+          }
+          finally {
+            Remove-Item -LiteralPath $pfxPath -Force -ErrorAction SilentlyContinue
+          }
+
       - name: Construir y probar
         shell: pwsh
         run: .\build_tools\Build-Installer.ps1
@@ -51,4 +97,17 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             gh release create $tag --title "Minutas ASH $tag" --generate-notes
           }
-          gh release upload $tag dist_installer\*.exe dist_installer\*SHA256*.txt --clobber
+          gh release upload $tag `
+            dist_installer\*.exe dist_installer\*SHA256*.txt `
+            docs\Manual_Maestro_2.3.3.md docs\Manual_Usuario_2.3.3.md docs\Manual_Configuracion_2.3.3.md docs\Manual_Programador_2.3.3.md `
+            docs\NOTAS_VERSION_2.3.7.md docs\VALIDACION_2.3.7.md `
+            plantillas\Plantilla_Marcadores_ASH_2.3.docx --clobber
+
+      - name: Retirar certificado temporal
+        if: always()
+        shell: pwsh
+        run: |
+          if ($env:MINUTAS_SIGNING_THUMBPRINT) {
+            $path = "Cert:\CurrentUser\My\$env:MINUTAS_SIGNING_THUMBPRINT"
+            Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+          }

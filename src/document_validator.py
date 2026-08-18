@@ -24,13 +24,12 @@ def validate_generated_docx(
         raise DocumentValidationError("El documento generado está vacío o incompleto.")
 
     try:
-        document = Document(document_path)
+        document = Document(str(document_path))
     except Exception as exc:
         raise DocumentValidationError("El documento generado no pudo volver a abrirse.") from exc
 
     total_table_count = len(document.tables) + sum(
-        len(section.header.tables) + len(section.footer.tables)
-        for section in document.sections
+        len(section.header.tables) + len(section.footer.tables) for section in document.sections
     )
     if total_table_count < minimum_tables:
         raise DocumentValidationError(
@@ -45,12 +44,9 @@ def validate_generated_docx(
     for section in document.sections:
         paragraph_text.extend(paragraph.text for paragraph in section.header.paragraphs)
         paragraph_text.extend(paragraph.text for paragraph in section.footer.paragraphs)
-    all_text = "\n".join(paragraph_text + [
-        cell.text
-        for table in tables
-        for row in table.rows
-        for cell in row.cells
-    ])
+    all_text = "\n".join(
+        paragraph_text + [cell.text for table in tables for row in table.rows for cell in row.cells]
+    )
     required = [
         "Acuerdos y Compromisos",
         "Asistentes",
@@ -58,9 +54,7 @@ def validate_generated_docx(
     ]
     for value in required:
         if value and value not in all_text:
-            raise DocumentValidationError(
-                f"El documento no contiene el campo requerido: {value}"
-            )
+            raise DocumentValidationError(f"El documento no contiene el campo requerido: {value}")
 
     if analysis.items:
         first_description = analysis.items[0].description[:60]

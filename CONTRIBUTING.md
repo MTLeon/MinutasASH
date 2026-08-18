@@ -1,37 +1,42 @@
-# Contribución interna
+# Contribución al proyecto
 
-MinutasASH se mantiene como proyecto privado de ASH. Toda contribución debe proteger la información de reuniones y privilegiar la facilidad de uso del usuario final.
+## Principios
 
-## Flujo recomendado
+1. No trabajar directamente sobre `main`.
+2. Crear una rama pequeña por cambio.
+3. No mezclar refactorización, funcionalidad nueva y corrección urgente en un mismo pull request.
+4. No subir datos reales de reuniones, clientes o proyectos.
+5. Toda modificación de generación documental debe incluir una prueba.
+6. Toda modificación de base de datos debe incluir una migración reversible o documentada.
 
-1. Crear una rama desde `develop` o `main` según el flujo vigente.
-2. Usar nombres como `feature/revision-masiva`, `fix/participantes-vtt` o `docs/manual-instalacion`.
-3. Realizar cambios acotados y comprobables.
-4. Ejecutar:
+## Nombres de ramas
 
-```powershell
-python -m compileall -q src tests
-python -m pytest -q
+```text
+feature/catalogo-sql-server
+fix/fecha-compromiso-relativa
+refactor/gui-reunion-view
+chore/actualizar-dependencias
+docs/manual-instalacion
 ```
 
-5. Abrir una Pull Request y completar la lista de validación.
-6. No fusionar mientras la validación automática esté fallando.
+## Mensajes de commit
 
-## Criterios de aceptación
+Se recomienda Conventional Commits:
 
-- La interfaz debe mantener lenguaje claro, acciones visibles y mensajes útiles.
-- Las operaciones largas no deben aparentar que la aplicación se congeló.
-- Los cambios no deben aumentar innecesariamente RAM, tiempo de procesamiento o cantidad de pasos.
-- Toda función crítica debe conservar trazabilidad y posibilidad de revisión humana.
-- Las configuraciones avanzadas deben quedar fuera del flujo principal cuando no sean necesarias.
+```text
+feat: agrega catálogo compartido de proyectos
+fix: corrige la resolución de responsables abreviados
+refactor: separa la vista de asistentes del controlador principal
+test: agrega regresión para transcripciones extensas
+docs: documenta el proceso de liberación
+build: actualiza el empaquetado de Windows
+```
 
-## Información prohibida en el repositorio
+## Antes de abrir un pull request
 
-- VTT, TXT, DOCX o minutas reales.
-- Nombres, correos o datos personales de asistentes.
-- Bases SQLite de usuarios.
-- Tokens, claves API, certificados o contraseñas.
-- Registros de diagnóstico sin anonimizar.
-- Instaladores firmados con certificados privados.
+```powershell
+.\.venv\Scripts\python.exe -m ruff check .
+.\.venv\Scripts\python.exe -m pytest
+```
 
-Los ejemplos deben ser ficticios o estar completamente anonimizados.
+El instalador debe construirse y probarse en Windows cuando el cambio afecte GUI, recursos, rutas, PyInstaller, Inno Setup o aprovisionamiento.

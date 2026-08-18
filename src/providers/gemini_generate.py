@@ -1,17 +1,18 @@
 from __future__ import annotations
 
 from typing import TypeVar
+
 import requests
 from pydantic import BaseModel
 
-from src.providers.base import ProcessingProviderError
+from src.providers.base import ProcessingProviderError, RuntimeCancellableProvider
 from src.providers.http_common import post_json, validate_json_text
-
+from src.providers.schema_compat import is_schema_rejection, json_fallback_prompt
 
 T = TypeVar("T", bound=BaseModel)
 
 
-class GeminiGenerateProvider:
+class GeminiGenerateProvider(RuntimeCancellableProvider):
     provider_id = "gemini"
     display_name = "Servicio Gemini"
     is_remote = True
@@ -56,15 +57,31 @@ class GeminiGenerateProvider:
                 "responseJsonSchema": response_model.model_json_schema(),
             },
         }
-        data = post_json(
-            endpoint,
-            headers={
-                "Content-Type": "application/json",
-                "x-goog-api-key": self.api_key,
-            },
-            payload=payload,
-            timeout=self.timeout,
-        )
+        headers = {
+            "Content-Type": "application/json",
+            "x-goog-api-key": self.api_key,
+        }
+        try:
+            data = post_json(endpoint, headers=headers, payload=payload, timeout=self.timeout)
+        except ProcessingProviderError as exc:
+            if not is_schema_rejection(exc):
+                raise
+            fallback_payload = {
+                "system_instruction": {"parts": [{"text": system_prompt}]},
+                "contents": [
+                    {
+                        "role": "user",
+                        "parts": [{"text": json_fallback_prompt(user_prompt, response_model)}],
+                    }
+                ],
+                "generationConfig": {
+                    "temperature": 0,
+                    "responseMimeType": "application/json",
+                },
+            }
+            data = post_json(
+                endpoint, headers=headers, payload=fallback_payload, timeout=self.timeout
+            )
         candidates = data.get("candidates") or []
         if not candidates:
             raise ProcessingProviderError("Gemini no devolvió candidatos.")

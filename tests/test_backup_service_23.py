@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
-import unittest
 from unittest.mock import patch
 
 from src.backup_service import create_backup, restore_backup, verify_backup
@@ -25,13 +25,15 @@ class BackupService23Tests(unittest.TestCase):
             (templates / "readme.txt").write_text("template", encoding="utf-8")
             db = AppDatabase(db_path)
             db.upsert_client(ClientRecord(legal_name="Cliente respaldado"))
-            with patch("src.backup_service.database_path", return_value=db_path), \
-                 patch("src.backup_service.config_path", return_value=config_path), \
-                 patch("src.backup_service.templates_dir", return_value=templates), \
-                 patch("src.backup_service.backups_dir", return_value=backups):
+            with (
+                patch("src.backup_service.database_path", return_value=db_path),
+                patch("src.backup_service.config_path", return_value=config_path),
+                patch("src.backup_service.templates_dir", return_value=templates),
+                patch("src.backup_service.backups_dir", return_value=backups),
+            ):
                 backup = create_backup(db, app_version="2.3.0")
                 manifest = verify_backup(backup)
-                self.assertEqual(manifest["database_schema"], 6)
+                self.assertEqual(manifest["database_schema"], 8)
                 db.deactivate_record("clients", 1)
                 restore_backup(backup)
                 restored = AppDatabase(db_path)

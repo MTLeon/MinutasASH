@@ -1,12 +1,12 @@
 from __future__ import annotations
 
+import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
-import unittest
 from unittest.mock import patch
 
 from src.models import ChunkAnalysis, MeetingItem, MinuteAnalysis
-from src.ollama_client import LocalEngineTimeout, StructuredOutputTruncated
+from src.ollama_client import LocalEngineTimeout
 from src.processing_checkpoint import ProcessingCheckpointStore
 from src.processing_runtime import ResourceSnapshot, resolve_processing_plan, split_text_chunk
 from src.resilient_pipeline import analyze_resilient_chunks
@@ -24,12 +24,10 @@ class FakeProvider:
         timeout_above: int | None = None,
         fail_marker: str | None = None,
         consolidation_timeout: bool = False,
-        truncate_above: int | None = None,
     ) -> None:
         self.timeout_above = timeout_above
         self.fail_marker = fail_marker
         self.consolidation_timeout = consolidation_timeout
-        self.truncate_above = truncate_above
         self.chunk_calls: list[str] = []
         self.request_operations: list[dict] = []
         self.telemetry = lambda _event: None
@@ -39,7 +37,9 @@ class FakeProvider:
         self.telemetry = telemetry or (lambda _event: None)
         self.cancelled = cancelled or (lambda: False)
 
-    def configure_request(self, *, timeout_seconds=None, context_length=None, operation=None) -> None:
+    def configure_request(
+        self, *, timeout_seconds=None, context_length=None, operation=None
+    ) -> None:
         self.request_operations.append(dict(operation or {}))
 
     def structured_chat(self, _system_prompt, user_prompt, response_model):
@@ -52,8 +52,6 @@ class FakeProvider:
                 raise RuntimeError("fallo controlado")
             if self.timeout_above is not None and len(transcript) > self.timeout_above:
                 raise LocalEngineTimeout("timeout controlado")
-            if self.truncate_above is not None and len(transcript) > self.truncate_above:
-                raise StructuredOutputTruncated("json cortado controlado")
             return ChunkAnalysis(
                 summary_points=["Resumen parcial"],
                 items=[
@@ -129,49 +127,6 @@ class ResilientPipeline232Tests(unittest.TestCase):
             self.assertTrue(result.analysis.items)
             self.assertTrue(any(event.get("type") == "chunk_split" for event in events))
             self.assertFalse(any(checkpoint_root.glob("*.json")))
-
-    def test_truncated_structured_output_splits_block_and_resumes(self) -> None:
-        with TemporaryDirectory() as temp:
-            root = Path(temp)
-            source = root / "meeting.txt"
-            lines = [f"[00:{index:02d}:00] Persona: " + "x" * 180 for index in range(30)]
-            source.write_text("\n".join(lines), encoding="utf-8")
-            config = {
-                "processing_profile": "fast",
-                "processing_checkpoint_enabled": True,
-                "processing_min_chunk_chars": 1000,
-                "processing_split_on_structure_error": True,
-                "processing_max_chunk_retries": 1,
-                "adaptive_timeout_min_seconds": 60,
-                "adaptive_timeout_max_seconds": 600,
-            }
-            plan = _healthy_plan(config, len(source.read_text(encoding="utf-8")))
-            provider = FakeProvider(truncate_above=2200)
-            events: list[dict] = []
-            with patch(
-                "src.resilient_pipeline.ProcessingCheckpointStore",
-                lambda: ProcessingCheckpointStore(root / "checkpoints"),
-            ):
-                result = analyze_resilient_chunks(
-                    provider,
-                    [source.read_text(encoding="utf-8")],
-                    {"meeting_date": "2026-07-31", "meeting_type": "interna"},
-                    config,
-                    plan,
-                    source,
-                    "ollama_local",
-                    provider.model,
-                    telemetry=events.append,
-                )
-            self.assertGreater(result.split_count, 0)
-            self.assertTrue(result.analysis.items)
-            self.assertTrue(
-                any(
-                    event.get("type") == "chunk_split"
-                    and event.get("reason") == "structured_output_truncated"
-                    for event in events
-                )
-            )
 
     def test_completed_blocks_are_reused_after_failure(self) -> None:
         with TemporaryDirectory() as temp:
@@ -323,7 +278,8 @@ class ResilientPipeline232Tests(unittest.TestCase):
             root = Path(temp)
             lines = [
                 f"[{index // 120:02d}:{(index // 2) % 60:02d}:{(index % 2) * 30:02d}] "
-                + f"Persona: seguimiento {index} " + "x" * 120
+                + f"Persona: seguimiento {index} "
+                + "x" * 120
                 for index in range(8 * 60 * 2)
             ]
             text = "\n".join(lines)

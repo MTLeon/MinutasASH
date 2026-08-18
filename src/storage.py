@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime
 import json
-from pathlib import Path
 import re
 import shutil
 import unicodedata
+from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
 
 from src.models import MeetingMetadata, MinuteAnalysis
 from src.vtt_reader import TranscriptSegment, normalized_transcript

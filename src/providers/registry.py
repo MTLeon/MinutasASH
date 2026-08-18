@@ -4,13 +4,16 @@ from typing import Any
 
 from src.providers.anthropic_messages import AnthropicMessagesProvider
 from src.providers.azure_openai_responses import AzureOpenAIResponsesProvider
-from src.providers.base import ProviderDescriptor, StructuredProcessingProvider
+from src.providers.base import (
+    ProviderCapabilities,
+    ProviderDescriptor,
+    StructuredProcessingProvider,
+)
 from src.providers.gemini_generate import GeminiGenerateProvider
 from src.providers.ollama_local import OllamaLocalProvider
 from src.providers.openai_compatible import OpenAICompatibleProvider
 from src.providers.openai_responses import OpenAIResponsesProvider
 from src.secret_store import get_secret
-
 
 _DESCRIPTORS = [
     ProviderDescriptor(
@@ -20,6 +23,13 @@ _DESCRIPTORS = [
         False,
         "Procesa la transcripción en el computador y puede funcionar sin Internet después de la preparación inicial.",
         "qwen3:8b",
+        ProviderCapabilities(
+            structured_output=True,
+            schema_fallback=True,
+            streaming=False,
+            offline=True,
+            sends_content_remotely=False,
+        ),
     ),
     ProviderDescriptor(
         "azure_openai",
@@ -111,11 +121,8 @@ def create_processing_provider(
             model or "qwen3:8b",
             int(settings.get("timeout_seconds", 1200)),
             float(settings.get("temperature", 0.05)),
-            int(settings.get("context_length", 6144)),
-            str(settings.get("keep_alive", "2m")),
-            int(settings.get("ollama_max_output_tokens", 900)),
-            int(settings.get("ollama_consolidation_output_tokens", 1200)),
-            int(settings.get("ollama_recovery_output_tokens", 700)),
+            int(settings.get("context_length", 8192)),
+            str(settings.get("keep_alive", "30m")),
         )
     if selected == "azure_openai":
         return AzureOpenAIResponsesProvider(
@@ -140,7 +147,9 @@ def create_processing_provider(
         )
     if selected == "gemini":
         return GeminiGenerateProvider(
-            str(settings.get("gemini_base_url", "https://generativelanguage.googleapis.com/v1beta")),
+            str(
+                settings.get("gemini_base_url", "https://generativelanguage.googleapis.com/v1beta")
+            ),
             model,
             get_secret("gemini") or "",
             remote_timeout,

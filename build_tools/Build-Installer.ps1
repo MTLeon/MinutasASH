@@ -3,9 +3,29 @@ Set-StrictMode -Version Latest
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
 $OutputEncoding = [System.Text.UTF8Encoding]::new()
 
+. (Join-Path $PSScriptRoot 'Release.ps1')
+. (Join-Path $PSScriptRoot 'Signing.ps1')
+
 $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
+$Version = Get-MinutasReleaseVersion -Root $Root
+$SetupBaseName = "MinutasASH_Setup_${Version}_Online"
 
+function Get-Sha256Hex([string]$Path) {
+    $hasher = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $stream = [System.IO.File]::OpenRead($Path)
+        try {
+            return (-join ($hasher.ComputeHash($stream) | ForEach-Object { $_.ToString("x2") }))
+        }
+        finally {
+            $stream.Dispose()
+        }
+    }
+    finally {
+        $hasher.Dispose()
+    }
+}
 function Write-Step([string]$Text) {
     Write-Host "`n=== $Text ===" -ForegroundColor Cyan
 }
@@ -115,7 +135,7 @@ if ($LASTEXITCODE -ne 0) { throw 'No fue posible instalar las dependencias bloqu
 Write-Step 'Ejecutando verificaciones internas'
 & $VenvPython -m compileall -q src tests
 if ($LASTEXITCODE -ne 0) { throw 'Existen errores de sintaxis en el código.' }
-& $VenvPython -m unittest discover -s tests -p 'test_*.py' -v
+& $VenvPython -m pytest --basetemp .runtime\pytest-build -q
 if ($LASTEXITCODE -ne 0) { throw 'Las pruebas internas no fueron aprobadas.' }
 
 Write-Step 'Creando aplicación de Windows'
@@ -125,6 +145,7 @@ Remove-Item -Recurse -Force -ErrorAction SilentlyContinue (Join-Path $Root 'dist
 if ($LASTEXITCODE -ne 0) { throw 'PyInstaller no pudo crear la aplicación.' }
 $AppExe = Join-Path $Root 'dist\MinutasASH\MinutasASH.exe'
 if (-not (Test-Path $AppExe)) { throw 'No se encontró MinutasASH.exe después de la construcción.' }
+Sign-MinutasArtifact -Path $AppExe
 
 Write-Step 'Comprobando Inno Setup'
 $Iscc = Find-InnoSetup
@@ -142,14 +163,18 @@ if (-not $Iscc) {
 }
 
 Write-Step 'Creando wizard de instalación final'
-Remove-Item -Recurse -Force -ErrorAction SilentlyContinue (Join-Path $Root 'dist_installer')
-& $Iscc (Join-Path $Root 'installer\MinutasASH.iss')
+$InstallerOutput = Join-Path $Root 'dist_installer'
+New-Item -ItemType Directory -Force -Path $InstallerOutput | Out-Null
+Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $InstallerOutput "$SetupBaseName.exe")
+Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $InstallerOutput "${SetupBaseName}_SHA256.txt")
+& $Iscc "/DMyAppVersion=$Version" (Join-Path $Root 'installer\MinutasASH.iss')
 if ($LASTEXITCODE -ne 0) { throw 'Inno Setup no pudo compilar el instalador.' }
 
-$Setup = Join-Path $Root 'dist_installer\MinutasASH_Setup_2.3.4_Online.exe'
+$Setup = Join-Path $InstallerOutput "$SetupBaseName.exe"
 if (-not (Test-Path $Setup)) { throw 'No se encontró el instalador final.' }
-$Hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $Setup).Hash.ToLowerInvariant()
-$HashFile = Join-Path $Root 'dist_installer\MinutasASH_Setup_2.3.4_Online_SHA256.txt'
+Sign-MinutasArtifact -Path $Setup
+$Hash = Get-Sha256Hex $Setup
+$HashFile = Join-Path $InstallerOutput "${SetupBaseName}_SHA256.txt"
 "$Hash  $(Split-Path -Leaf $Setup)" | Set-Content -Encoding ASCII $HashFile
 
 Write-Host "`nConstrucción finalizada:" -ForegroundColor Green

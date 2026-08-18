@@ -1,16 +1,36 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Protocol, TypeVar
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from typing import Any, Protocol, TypeVar
 
 from pydantic import BaseModel
-
 
 T = TypeVar("T", bound=BaseModel)
 
 
 class ProcessingProviderError(RuntimeError):
     pass
+
+
+class RuntimeCancellableProvider:
+    _cancelled: Callable[[], bool] = lambda: False
+
+    def configure_runtime(
+        self,
+        telemetry: Callable[[dict[str, Any]], None] | None = None,
+        cancelled: Callable[[], bool] | None = None,
+    ) -> None:
+        self._cancelled = cancelled or (lambda: False)
+
+
+@dataclass(frozen=True)
+class ProviderCapabilities:
+    structured_output: bool = True
+    schema_fallback: bool = True
+    streaming: bool = False
+    offline: bool = False
+    sends_content_remotely: bool = True
 
 
 @dataclass(frozen=True)
@@ -21,6 +41,7 @@ class ProviderDescriptor:
     requires_api_key: bool
     description: str
     default_model: str
+    capabilities: ProviderCapabilities = field(default_factory=ProviderCapabilities)
 
 
 class StructuredProcessingProvider(Protocol):
@@ -29,13 +50,11 @@ class StructuredProcessingProvider(Protocol):
     is_remote: bool
     model: str
 
-    def check_connection(self) -> None:
-        ...
+    def check_connection(self) -> None: ...
 
     def structured_chat(
         self,
         system_prompt: str,
         user_prompt: str,
         response_model: type[T],
-    ) -> T:
-        ...
+    ) -> T: ...

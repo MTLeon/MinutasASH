@@ -6,9 +6,13 @@ from typing import TypeVar
 import requests
 from pydantic import BaseModel
 
-from src.providers.base import ProcessingProviderError
+from src.providers.base import ProcessingProviderError, RuntimeCancellableProvider
 from src.providers.http_common import post_json, validate_json_text
-
+from src.providers.schema_compat import (
+    is_schema_rejection,
+    json_fallback_prompt,
+    strict_object_schema,
+)
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -18,7 +22,7 @@ def _format_name(model: type[BaseModel]) -> str:
     return name[:64] or "structured_response"
 
 
-class OpenAIResponsesProvider:
+class OpenAIResponsesProvider(RuntimeCancellableProvider):
     provider_id = "openai"
     display_name = "Servicio OpenAI"
     is_remote = True
@@ -72,17 +76,34 @@ class OpenAIResponsesProvider:
                     "type": "json_schema",
                     "name": _format_name(response_model),
                     "description": "Estructura de minuta de reunión de ASH.",
-                    "schema": response_model.model_json_schema(),
+                    "schema": strict_object_schema(response_model.model_json_schema()),
                     "strict": True,
                 }
             },
         }
-        data = post_json(
-            f"{self.base_url}/responses",
-            headers=self._headers,
-            payload=payload,
-            timeout=self.timeout,
-        )
+        try:
+            data = post_json(
+                f"{self.base_url}/responses",
+                headers=self._headers,
+                payload=payload,
+                timeout=self.timeout,
+                cancelled=self._cancelled,
+            )
+        except ProcessingProviderError as exc:
+            if not is_schema_rejection(exc):
+                raise
+            fallback_payload = {key: value for key, value in payload.items() if key != "text"}
+            fallback_payload["input"] = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": json_fallback_prompt(user_prompt, response_model)},
+            ]
+            data = post_json(
+                f"{self.base_url}/responses",
+                headers=self._headers,
+                payload=fallback_payload,
+                timeout=self.timeout,
+                cancelled=self._cancelled,
+            )
         text = data.get("output_text")
         if not text:
             for item in data.get("output", []):

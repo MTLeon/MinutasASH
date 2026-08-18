@@ -1,0 +1,2 @@
+# Complemento opcional; no se incluye en el instalador base.
+faster-whisper>=1.1,<2

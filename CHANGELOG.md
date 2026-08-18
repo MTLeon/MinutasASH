@@ -1,49 +1,55 @@
-# Registro de cambios
+# Changelog
 
-## [2.3.5] - 2026-07-31
+## [2.3.7] - 2026-08-18
 
-### Corregido
-- Ollama ya no se inicia durante la apertura de la interfaz; se inicia bajo demanda al procesar.
-- Las invocaciones del componente local se ejecutan sin ventana de consola en Windows.
-- Un bloqueo de inicio impide lanzar varias instancias simultáneas del servicio local.
-- Las respuestas JSON truncadas amplían automáticamente el límite de salida.
-- Si el JSON sigue incompleto, el bloque se divide y conserva los bloques previamente guardados.
-- El perfil automático no asciende desde Rápido durante la misma ejecución después del warmup.
+- Optimización adaptativa de reuniones extensas y preflight multimedia.
+- Centro de procesamiento recuperable y panel de salud operativo.
+- Continuidad de compromisos y comparación local entre minutas.
+- Explicación de responsables, plazos y descripciones ambiguas.
+- Identidad de release alineada con secuencia `2003007` y `VERSION.txt`.
+- Firma Authenticode estricta con sello temporal y selección explícita de certificado.
+- Smokes aislados de instalación limpia y actualización 2.3.6 → 2.3.7.
+- Manifiesto, documentación y workflow de release actualizados.
+
+## [2.3.6] - 2026-08-14
+
+- Preparación opcional de audio: M4A o MP3, mono y 16 kHz antes de transcribir.
+- Respaldo del complemento Whisper con PyAV cuando FFmpeg externo no está disponible.
+- Limpieza segura de copias parciales y eliminación explícita de la fuente solo tras verificar el resultado.
+## [2.3.5] - 2026-08-13
+
+- Actualizador compatible con instaladores de GitHub distribuidos en varias partes.
+- Reconstrucción local y verificación SHA-256 del instalador antes de ejecutarlo.
+- Canal público de releases configurado como origen predeterminado para nuevas instalaciones.
+
+## [2.3.4] - 2026-08-11
+
+### Añadido
+
+- Bandeja unificada, carpeta vigilada, cola recuperable y detección de duplicados por hash.
+- Transcripción Whisper opcional, diarización desacoplada y componentes administrables.
+- Banco de evaluación y comparación entre proveedores con trazabilidad de modelo, prompt y configuración.
+- Validación estructurada, recuperación de JSON flexible y comprobación de evidencia.
+- Automatización de reuniones, notificaciones, diagnóstico exportable y observabilidad.
+- Atajos globales y contextuales, selección mediante teclado o arrastre, ordenamiento y copiado de tablas.
+- Instalador separado para Whisper CPU y smoke reproducible de instalación limpia.
 
 ### Mejorado
-- Límites predeterminados de salida: 1400 tokens por bloque, 1800 en consolidación y 1000 en recuperación.
-- Mensajes de actividad diferenciados para timeout y salida estructurada incompleta.
-- Pruebas de regresión para consola oculta, arranque bajo demanda, retry dinámico y división por JSON truncado.
 
-## [2.3.4] - 2026-07-31
+- Revisión masiva con deshacer, búsqueda, foco automático y mejor contraste.
+- Filtrado de etiquetas que no representan personas.
+- Prevención de códigos de proyecto provisionales antes de procesar o emitir.
+- Aprendizaje controlado, exportación de dataset y análisis de correcciones aprobadas.
+- Documentación, scripts de calidad y construcción final de Windows.
 
-### Preparación de repositorio GitHub
+### Validación
 
-- Flujo CI en Windows con sintaxis, pruebas y cobertura.
-- Flujo de construcción de instalador y publicación por etiquetas.
-- Plantillas internas de Issues y Pull Requests con control de privacidad.
-- Dependabot mensual para Python y GitHub Actions.
-- Script asistido para crear y publicar un repositorio privado.
-- Guía de ramas, protección de `main`, Releases y manejo de dependencias.
+- 219 pruebas aprobadas y 71,73 % de cobertura.
+- 75 escenarios visuales aprobados.
+- Aplicación, worker e instaladores firmados y verificados.
+- Smoke completo de instalación, ejecución y desinstalación aprobado.
 
-### Rendimiento
-- Reserva de RAM del modelo antes de cargarlo y reevaluación posterior al warmup.
-- Perfiles reducidos a 4096/6144/8192 de contexto y bloques más pequeños.
-- Límites de salida por etapa, `keep_alive` de 2 minutos y descarga del modelo al finalizar.
-- Compactación de subtítulos progresivos, ruido aislado, checkpoints y consolidaciones.
-
-### Experiencia de usuario
-- Selección por arrastre en Revisión.
-- `Supr` descarta la selección; `Ctrl+A`, `Ctrl+Z` y `Esc` agilizan el trabajo.
-- Filtros Pendientes, Todos, Aprobados y Descartados.
-- Confirmaciones menos intrusivas y eliminación definitiva diferenciada.
-- Caché de contexto de transcripción y límite del registro visual.
-
-### Calidad
-- Validación reforzada de participantes.
-- Nuevas pruebas de optimización y documentación consolidada.
-
-# Changelog
+ Changelog
 
 ## [2.3.3] - 2026-07-31
 
