@@ -5,6 +5,21 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class BuildScriptRegressionTests(unittest.TestCase):
+    def test_windows_build_uses_locked_dependencies_and_full_pytest_suite(self):
+        workflow = (ROOT / ".github" / "workflows" / "build-windows.yml").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("pip install -r requirements-build-lock.txt", workflow)
+        self.assertIn("python -m pytest -q", workflow)
+        self.assertNotIn("python -m unittest discover", workflow)
+        self.assertNotIn("pip install -r requirements.txt -r requirements-build.txt", workflow)
+
+    def test_dependabot_does_not_update_pydantic_core_in_isolation(self):
+        config = (ROOT / ".github" / "dependabot.yml").read_text(encoding="utf-8")
+
+        self.assertIn('dependency-name: "pydantic-core"', config)
+
     def test_python_launcher_does_not_depend_on_scalar_count(self):
         script = (ROOT / "build_tools" / "Build-Installer.ps1").read_text(encoding="utf-8")
 

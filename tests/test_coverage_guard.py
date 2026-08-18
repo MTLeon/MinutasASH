@@ -3,9 +3,11 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from time import perf_counter
 from unittest.mock import patch
 
 from src.coverage_guard import (
+    _LOW_VALUE_RE,
     apply_deterministic_fallback,
     evaluate_coverage,
     extract_action_candidates,
@@ -33,6 +35,16 @@ class EmptyProvider:
 
 
 class CoverageGuardTests(unittest.TestCase):
+    def test_low_value_filter_rejects_long_numeric_prefix_without_backtracking(self):
+        value = "9" * 10_000 + "x"
+
+        started = perf_counter()
+        match = _LOW_VALUE_RE.search(value)
+        elapsed = perf_counter() - started
+
+        self.assertIsNone(match)
+        self.assertLess(elapsed, 0.25)
+
     def test_detects_explicit_points_without_relying_on_punctuation(self):
         raw = read_teams_vtt(EXAMPLE, merge_adjacent=False)
         candidates = extract_action_candidates(raw)

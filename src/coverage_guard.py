@@ -152,8 +152,8 @@ _VAGUE_ACTION_RE = re.compile(
 )
 
 _LOW_VALUE_RE = re.compile(
-    r"^(?:hola|hello|al[oó]|buenos\s+d[ií]as|buenas\s+tardes|"
-    r"c[oó]mo\s+est[aá]s|prueba(?:\s+de\s+audio)?|\d+[\s.,-]*)+$",
+    r"^(?:(?:hola|hello|al[oó]|buenos\s+d[ií]as|buenas\s+tardes|"
+    r"c[oó]mo\s+est[aá]s|prueba(?:\s+de\s+audio)?)[\s.,-]*|\d[\d\s.,-]*)$",
     re.I,
 )
 

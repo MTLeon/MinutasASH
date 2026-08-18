@@ -24,10 +24,10 @@ jobs:
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt -r requirements-build.txt
+          python -m pip install -r requirements-build-lock.txt
 
       - name: Ejecutar pruebas
-        run: python -m unittest discover -s tests -p "test_*.py" -v
+        run: python -m pytest -q
 
       - name: Construir aplicación PyInstaller
         shell: pwsh

@@ -6,6 +6,10 @@ updates:
       interval: monthly
     open-pull-requests-limit: 5
     labels: ["dependencies", "python"]
+    # Pydantic fija una versión exacta de pydantic-core. El núcleo se actualiza
+    # junto con Pydantic durante la regeneración controlada del lock de build.
+    ignore:
+      - dependency-name: "pydantic-core"
 
   - package-ecosystem: github-actions
     directory: "/"
