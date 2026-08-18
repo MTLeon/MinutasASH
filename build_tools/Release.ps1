@@ -34,3 +34,64 @@ function Get-Sha256Hex {
         $hasher.Dispose()
     }
 }
+
+function New-MinutasReleaseManifest {
+    param(
+        [Parameter(Mandatory = $true)][string]$Root,
+        [Parameter(Mandatory = $true)][string]$OutputPath,
+        [string]$Commit = ''
+    )
+
+    $version = Get-MinutasReleaseVersion -Root $Root
+    $parts = @($version.Split('.') | ForEach-Object { [int]$_ })
+    $artifactRoot = Join-Path $Root 'dist_installer'
+    $expectedNames = @(
+        "MinutasASH_Setup_${version}_Online.exe"
+        "MinutasASH_Whisper_CPU_${version}.exe"
+    )
+    $artifacts = @(
+        Get-ChildItem -LiteralPath $artifactRoot -Filter '*.exe' -File |
+            Where-Object Name -In $expectedNames |
+            Sort-Object Name |
+            ForEach-Object {
+                $signature = Get-AuthenticodeSignature -LiteralPath $_.FullName
+                if ($signature.Status -ne [System.Management.Automation.SignatureStatus]::Valid) {
+                    throw "La firma de $($_.Name) no es válida: $($signature.Status)."
+                }
+                if (-not $signature.TimeStamperCertificate) {
+                    throw "El artefacto $($_.Name) no contiene sello temporal."
+                }
+                [ordered]@{
+                    file = $_.Name
+                    size_bytes = $_.Length
+                    sha256 = Get-Sha256Hex -Path $_.FullName
+                    signature_status = [string]$signature.Status
+                    signer_thumbprint = if ($signature.SignerCertificate) {
+                        $signature.SignerCertificate.Thumbprint
+                    } else { $null }
+                    timestamp_thumbprint = if ($signature.TimeStamperCertificate) {
+                        $signature.TimeStamperCertificate.Thumbprint
+                    } else { $null }
+                }
+            }
+    )
+    if ($artifacts.Count -eq 0) {
+        throw "No se encontraron artefactos EXE de la versión $version en $artifactRoot."
+    }
+
+    $manifest = [ordered]@{
+        schema_version = 1
+        product = 'Minutas ASH'
+        version = $version
+        release_sequence = ($parts[0] * 1000000) + ($parts[1] * 1000) + $parts[2]
+        commit = $Commit
+        generated_utc = [DateTimeOffset]::UtcNow.ToString('o')
+        artifacts = $artifacts
+    }
+    $parent = Split-Path -Parent $OutputPath
+    if ($parent) {
+        New-Item -ItemType Directory -Force -Path $parent | Out-Null
+    }
+    $manifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $OutputPath -Encoding utf8
+    return Get-Item -LiteralPath $OutputPath
+}

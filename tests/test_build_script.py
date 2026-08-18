@@ -67,6 +67,34 @@ class BuildScriptRegressionTests(unittest.TestCase):
             workflow.index("gh release upload"), workflow.index("Retirar certificado temporal")
         )
 
+    def test_release_workflow_uses_commit_identity_and_dynamic_release_documents(self):
+        workflow = (ROOT / ".github" / "workflows" / "release-windows.yml").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("name: MinutasASH-Setup-${{ github.sha }}", workflow)
+        self.assertNotIn("name: MinutasASH-Setup-${{ github.ref_name }}", workflow)
+        self.assertIn("New-MinutasReleaseManifest", workflow)
+        self.assertIn('"docs\\NOTAS_VERSION_$version.md"', workflow)
+        self.assertIn('"docs\\VALIDACION_$version.md"', workflow)
+        self.assertNotIn("NOTAS_VERSION_2.3.7.md", workflow)
+        self.assertNotIn("VALIDACION_2.3.7.md", workflow)
+
+    def test_release_manifest_records_commit_hashes_and_signatures(self):
+        release = (ROOT / "build_tools" / "Release.ps1").read_text(encoding="utf-8")
+        build = (ROOT / "build_tools" / "Build-Installer.ps1").read_text(encoding="utf-8")
+
+        self.assertIn("function New-MinutasReleaseManifest", release)
+        self.assertIn("Get-AuthenticodeSignature", release)
+        self.assertIn("signer_thumbprint", release)
+        self.assertIn("timestamp_thumbprint", release)
+        self.assertIn("Where-Object Name -In $expectedNames", release)
+        self.assertIn("SignatureStatus]::Valid", release)
+        self.assertIn("no contiene sello temporal", release)
+        self.assertIn("release_sequence", release)
+        self.assertIn("commit = $Commit", release)
+        self.assertEqual(build.count("function Get-Sha256Hex"), 0)
+
     def test_installer_smoke_keeps_whisper_profile_out_of_scope(self):
         script = (ROOT / "scripts" / "Test-InstallerSmoke.ps1").read_text(encoding="utf-8")
 
