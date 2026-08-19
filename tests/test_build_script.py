@@ -64,7 +64,7 @@ class BuildScriptRegressionTests(unittest.TestCase):
         self.assertIn("MINUTAS_SIGNING_THUMBPRINT", signing)
         self.assertIn("MINUTAS_ALLOW_UNTIMESTAMPED_SIGNATURE", signing)
         self.assertIn("MINUTAS_ALLOW_PINNED_SELF_SIGNED_SIGNATURE", signing)
-        self.assertIn("CustomRootTrust", signing)
+        self.assertNotIn("X509ChainTrustMode", signing)
         self.assertIn("UntrustedRoot", signing)
         self.assertNotIn("DisableCertificateDownloads", signing)
         self.assertIn("Assert-MinutasAuthenticodeSignature", signing)
