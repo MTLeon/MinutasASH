@@ -20,8 +20,8 @@
 
 ## Calidad y planificación
 
-- `NOTAS_VERSION_2.3.7.md`: cambios incluidos en la entrega actual.
-- `VALIDACION_2.3.7.md`: criterios y evidencia consolidada de la entrega actual.
+- `NOTAS_VERSION_2.3.8.md`: cambios incluidos en la entrega actual.
+- `VALIDACION_2.3.8.md`: criterios y evidencia consolidada de la entrega actual.
 - `ESTADO_PENDIENTES_2026-08-11.md`: estado detallado y trabajo externo pendiente.
 - `ROADMAP.md`: evolución funcional.
 - `DEUDA.md`: deuda técnica vigente.

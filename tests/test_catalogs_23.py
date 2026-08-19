@@ -46,7 +46,7 @@ class Catalogs23Tests(unittest.TestCase):
             self.assertEqual(db.get_project("P0001")["client_id"], client_id)
             events = db.list_audit_events()
             self.assertGreaterEqual(len(events), 3)
-            self.assertTrue(all(event.get("app_version") == "2.3.7" for event in events[:3]))
+            self.assertTrue(all(event.get("app_version") == "2.3.8" for event in events[:3]))
 
     def test_deactivation_keeps_historical_record(self) -> None:
         with TemporaryDirectory() as temp:

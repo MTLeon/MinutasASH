@@ -1,5 +1,5 @@
 {
-    "app_version":  "2.3.7",
+    "app_version":  "2.3.8",
     "schema_version":  6,
     "ollama_base_url":  "http://127.0.0.1:11434",
     "model":  "qwen3:8b",
@@ -65,7 +65,7 @@
     "semantic_guard_min_coverage":  0.8,
     "semantic_guard_fallback_min_confidence":  0.82,
     "semantic_guard_max_candidates":  500,
-    "release_sequence":  2003007,
+    "release_sequence":  2003008,
     "product_generation":  2,
     "legacy_predecessor":  "2.3.2",
     "guided_mode":  true,
