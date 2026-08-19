@@ -465,6 +465,9 @@ class PreferencesDialog(tk.Toplevel):
         self.remote_timeout_var = tk.IntVar(
             value=int(self.working.get("remote_timeout_seconds", 300))
         )
+        self.remote_parallel_var = tk.IntVar(
+            value=int(self.working.get("remote_parallel_requests", 2))
+        )
         self.credential_status_var = tk.StringVar()
         self.provider_description_var = tk.StringVar()
         self.processing_profile_var = tk.StringVar(
@@ -587,21 +590,31 @@ class PreferencesDialog(tk.Toplevel):
             textvariable=self.timeout_max_minutes_var,
             width=10,
         ).grid(row=1, column=1, sticky="w", pady=5)
+        ttk.Label(resilience, text="Solicitudes remotas simultáneas").grid(
+            row=2, column=0, sticky="w", padx=(0, 12), pady=5
+        )
+        ttk.Spinbox(
+            resilience,
+            from_=1,
+            to=4,
+            textvariable=self.remote_parallel_var,
+            width=10,
+        ).grid(row=2, column=1, sticky="w", pady=5)
         ttk.Checkbutton(
             resilience,
             text="Adaptar bloques y tiempo de espera al equipo",
             variable=self.adaptive_timeout_var,
-        ).grid(row=2, column=0, columnspan=2, sticky="w", pady=4)
+        ).grid(row=3, column=0, columnspan=2, sticky="w", pady=4)
         ttk.Checkbutton(
             resilience,
             text="Guardar avance para continuar después de cancelaciones o fallos",
             variable=self.checkpoint_enabled_var,
-        ).grid(row=3, column=0, columnspan=2, sticky="w", pady=4)
+        ).grid(row=4, column=0, columnspan=2, sticky="w", pady=4)
         ttk.Checkbutton(
             resilience,
             text="Dividir automáticamente un bloque que exceda el tiempo",
             variable=self.split_timeout_var,
-        ).grid(row=4, column=0, columnspan=2, sticky="w", pady=4)
+        ).grid(row=5, column=0, columnspan=2, sticky="w", pady=4)
         ttk.Label(
             resilience,
             text=(
@@ -611,7 +624,7 @@ class PreferencesDialog(tk.Toplevel):
             style="Muted.TLabel",
             wraplength=540,
             justify="left",
-        ).grid(row=5, column=0, columnspan=2, sticky="w", pady=(7, 0))
+        ).grid(row=6, column=0, columnspan=2, sticky="w", pady=(7, 0))
         transcription = ttk.LabelFrame(frame, text="Transcripción opcional", padding=10)
         transcription.grid(row=9, column=0, columnspan=2, sticky="ew", pady=(12, 0))
         transcription.columnconfigure(1, weight=1)
@@ -957,6 +970,7 @@ class PreferencesDialog(tk.Toplevel):
             {
                 "processing_provider": self._selected_provider_id(),
                 "remote_timeout_seconds": int(self.remote_timeout_var.get()),
+                "remote_parallel_requests": int(self.remote_parallel_var.get()),
                 "confirm_remote_processing": bool(self.confirm_remote_var.get()),
                 "fallback_to_local": bool(self.fallback_local_var.get()),
                 "processing_profile": PROCESSING_PROFILE_IDS.get(

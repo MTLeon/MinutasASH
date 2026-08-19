@@ -6,9 +6,10 @@ import contextlib
 import hashlib
 import json
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
-from time import monotonic
+from time import monotonic, sleep
 from typing import Any
 
 from src.minute_generator import analyze_chunks, consolidate_minute
@@ -28,11 +29,13 @@ from src.processing_runtime import (
     split_text_chunk,
     stable_processing_key,
 )
+from src.providers.base import RemoteRateLimitError
 
 LogCallback = Callable[[str], None]
 ProgressCallback = Callable[[int, str], None]
 TelemetryCallback = Callable[[dict[str, Any]], None]
 CancelCallback = Callable[[], bool]
+ClientFactory = Callable[[], Any]
 
 
 class _TransientCheckpointStore:
@@ -67,6 +70,8 @@ class ResilientPipelineResult:
     chunk_durations: list[float] = field(default_factory=list)
     deterministic_consolidations: int = 0
     consolidation_levels: int = 0
+    parallel_workers: int = 1
+    parallel_completed_blocks: int = 0
 
     def diagnostics(self) -> dict[str, Any]:
         return {
@@ -80,6 +85,8 @@ class ResilientPipelineResult:
             "chunk_durations_seconds": self.chunk_durations,
             "deterministic_consolidations": self.deterministic_consolidations,
             "consolidation_levels": self.consolidation_levels,
+            "parallel_workers": self.parallel_workers,
+            "parallel_completed_blocks": self.parallel_completed_blocks,
         }
 
 
@@ -190,8 +197,63 @@ def _checkpoint_matches(
     )
 
 
-def _process_chunks(
-    client: Any,
+def _wait_cancelably(seconds: float, cancelled: CancelCallback) -> None:
+    deadline = monotonic() + max(0.0, seconds)
+    while monotonic() < deadline:
+        if cancelled():
+            raise InterruptedError("Proceso cancelado por el usuario.")
+        sleep(min(0.1, max(0.0, deadline - monotonic())))
+
+
+def _analyze_remote_work_item(
+    client_factory: ClientFactory,
+    item: dict[str, Any],
+    item_index: int,
+    total_items: int,
+    metadata: dict[str, Any],
+    config: dict[str, Any],
+    plan: ProcessingPlan,
+    knowledge_context: str,
+    telemetry: TelemetryCallback,
+    cancelled: CancelCallback,
+) -> tuple[str, ChunkAnalysis, float]:
+    if cancelled():
+        raise InterruptedError("Proceso cancelado por el usuario.")
+    client = client_factory()
+    _configure_runtime(client, telemetry, cancelled)
+    text = str(item["text"])
+    chunk_id = str(item["id"])
+    timeout = adaptive_timeout_seconds(
+        plan.effective_profile,
+        len(text),
+        config,
+        snapshot=get_resource_snapshot(),
+    )
+    _configure_request(
+        client,
+        timeout_seconds=timeout,
+        context_length=plan.effective_profile.context_length,
+        operation={
+            "stage": "chunk_analysis",
+            "block_id": chunk_id,
+            "block_index": item_index,
+            "total_blocks": total_items,
+            "attempt": 1,
+            "parallel": True,
+        },
+    )
+    started = monotonic()
+    result = analyze_chunks(
+        client,
+        [text],
+        metadata.get("meeting_date"),
+        knowledge_context=knowledge_context,
+    )[0]
+    return chunk_id, result, monotonic() - started
+
+
+def _prime_remote_chunks(
+    client_factory: ClientFactory | None,
     checkpoint: ProcessingCheckpoint,
     store: ProcessingCheckpointStore | _TransientCheckpointStore,
     metadata: dict[str, Any],
@@ -203,10 +265,120 @@ def _process_chunks(
     progress: ProgressCallback,
     telemetry: TelemetryCallback,
     cancelled: CancelCallback,
+) -> tuple[int, int]:
+    pending = [
+        (index, item)
+        for index, item in enumerate(checkpoint.work_items, start=1)
+        if str(item["id"]) not in checkpoint.completed
+    ]
+    requested = max(1, min(int(config.get("remote_parallel_requests", 2)), 4))
+    workers = min(requested, len(pending))
+    if client_factory is None or workers < 2:
+        return 0, 1
+
+    log(f"Análisis remoto paralelo: hasta {workers} solicitudes simultáneas.")
+    _emit(
+        telemetry,
+        "remote_parallel_started",
+        workers=workers,
+        pending_blocks=len(pending),
+    )
+    completed_now = 0
+    was_cancelled = False
+    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="minutas-remote") as executor:
+        futures = {
+            executor.submit(
+                _analyze_remote_work_item,
+                client_factory,
+                item,
+                index,
+                len(checkpoint.work_items),
+                metadata,
+                config,
+                plan,
+                knowledge_context,
+                telemetry,
+                cancelled,
+            ): str(item["id"])
+            for index, item in pending
+        }
+        for future in as_completed(futures):
+            chunk_id = futures[future]
+            try:
+                completed_id, result, duration = future.result()
+            except InterruptedError:
+                was_cancelled = True
+                continue
+            except Exception as exc:
+                log(
+                    f"El bloque {chunk_id} no terminó en paralelo; se recuperará "
+                    f"con el flujo secuencial ({exc})."
+                )
+                _emit(
+                    telemetry,
+                    "remote_parallel_fallback",
+                    block_id=chunk_id,
+                    error_type=type(exc).__name__,
+                )
+                continue
+
+            checkpoint.completed[completed_id] = result.model_dump()
+            checkpoint.durations[completed_id] = duration
+            checkpoint.status = "in_progress"
+            store.save(checkpoint)
+            completed_now += 1
+            completed_total = len(checkpoint.completed)
+            value = 25 + int(43 * completed_total / max(len(checkpoint.work_items), 1))
+            progress(
+                value,
+                f"Bloque remoto {completed_total} de {len(checkpoint.work_items)} guardado",
+            )
+            _emit(
+                telemetry,
+                "chunk_completed",
+                stage="chunk_analysis",
+                percent=value,
+                block_id=completed_id,
+                completed_blocks=completed_total,
+                total_blocks=len(checkpoint.work_items),
+                duration_seconds=duration,
+                parallel=True,
+            )
+
+    if was_cancelled or cancelled():
+        checkpoint.status = "paused"
+        store.save(checkpoint)
+        raise InterruptedError(
+            "Proceso cancelado. Los bloques remotos completados quedaron guardados."
+        )
+    _emit(
+        telemetry,
+        "remote_parallel_completed",
+        workers=workers,
+        completed_blocks=completed_now,
+        fallback_blocks=max(len(pending) - completed_now, 0),
+    )
+    return completed_now, workers
+
+
+def _process_chunks(
+    client: Any,
+    checkpoint: ProcessingCheckpoint,
+    store: ProcessingCheckpointStore | _TransientCheckpointStore,
+    metadata: dict[str, Any],
+    config: dict[str, Any],
+    plan: ProcessingPlan,
+    knowledge_context: str,
+    *,
+    resumed_blocks_at_start: int | None = None,
+    log: LogCallback,
+    progress: ProgressCallback,
+    telemetry: TelemetryCallback,
+    cancelled: CancelCallback,
 ) -> tuple[list[ChunkAnalysis], int, int, list[float]]:
     profile = plan.effective_profile
     completed = checkpoint.completed_analyses()
-    resumed_blocks = len(completed)
+    resumed_blocks = len(completed) if resumed_blocks_at_start is None else resumed_blocks_at_start
     retry_total = sum(checkpoint.retries.values())
     index = 0
     pipeline_started = monotonic()
@@ -294,6 +466,37 @@ def _process_chunks(
                     metadata.get("meeting_date"),
                     knowledge_context=knowledge_context,
                 )[0]
+            except RemoteRateLimitError as rate_error:
+                duration = monotonic() - started
+                checkpoint.retries[chunk_id] = attempt + 1
+                retry_total += 1
+                max_rate_retries = int(config.get("remote_rate_limit_retries", 3))
+                if attempt < max_rate_retries:
+                    maximum_wait = float(config.get("remote_retry_max_seconds", 120))
+                    suggested = rate_error.retry_after_seconds
+                    wait_seconds = min(
+                        maximum_wait,
+                        suggested if suggested is not None else 2.0 * (2**attempt),
+                    )
+                    checkpoint.status = "rate_limited"
+                    store.save(checkpoint)
+                    log(
+                        f"El proveedor limitó temporalmente el bloque {chunk_id}; "
+                        f"se reintentará en {wait_seconds:.1f} s."
+                    )
+                    _emit(
+                        telemetry,
+                        "remote_rate_limited",
+                        block_id=chunk_id,
+                        attempt=attempt + 1,
+                        wait_seconds=wait_seconds,
+                        duration_seconds=duration,
+                    )
+                    _wait_cancelably(wait_seconds, cancelled)
+                    continue
+                checkpoint.status = "rate_limited"
+                store.save(checkpoint)
+                raise
             except LocalEngineTimeout as timeout_error:
                 duration = monotonic() - started
                 checkpoint.retries[chunk_id] = attempt + 1
@@ -593,6 +796,7 @@ def analyze_resilient_chunks(
     provider_id: str,
     model: str,
     knowledge_context: str = "",
+    client_factory: ClientFactory | None = None,
     *,
     log: LogCallback | None = None,
     progress: ProgressCallback | None = None,
@@ -646,6 +850,20 @@ def analyze_resilient_chunks(
         store.save(checkpoint)
 
     initial_count = len(chunks)
+    resumed_blocks_at_start = len(checkpoint.completed) if resumed else 0
+    parallel_completed, parallel_workers = _prime_remote_chunks(
+        client_factory,
+        checkpoint,
+        store,
+        metadata,
+        config,
+        plan,
+        knowledge_context,
+        log=log,
+        progress=progress,
+        telemetry=telemetry,
+        cancelled=cancelled,
+    )
     chunk_analyses, resumed_blocks, retries, durations = _process_chunks(
         client,
         checkpoint,
@@ -654,6 +872,7 @@ def analyze_resilient_chunks(
         config,
         plan,
         knowledge_context,
+        resumed_blocks_at_start=resumed_blocks_at_start,
         log=log,
         progress=progress,
         telemetry=telemetry,
@@ -696,4 +915,6 @@ def analyze_resilient_chunks(
         chunk_durations=durations,
         deterministic_consolidations=deterministic,
         consolidation_levels=levels,
+        parallel_workers=parallel_workers,
+        parallel_completed_blocks=parallel_completed,
     )

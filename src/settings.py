@@ -96,6 +96,9 @@ class AppSettings(BaseModel):
         "ollama_local", "azure_openai", "openai", "anthropic", "gemini", "openai_compatible"
     ] = "ollama_local"
     remote_timeout_seconds: int = Field(default=300, ge=30, le=3600)
+    remote_parallel_requests: int = Field(default=2, ge=1, le=4)
+    remote_rate_limit_retries: int = Field(default=3, ge=0, le=8)
+    remote_retry_max_seconds: int = Field(default=120, ge=1, le=900)
     remote_input_cost_per_million_usd: float = Field(default=0.0, ge=0.0)
     confirm_remote_processing: bool = True
     fallback_to_local: bool = True

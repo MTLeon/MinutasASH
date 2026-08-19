@@ -5,6 +5,7 @@ import time
 import unittest
 from unittest.mock import patch
 
+from src.providers.base import RemoteRateLimitError
 from src.providers.http_common import post_json
 
 
@@ -16,7 +17,29 @@ class FakeResponse:
         return {"ok": True}
 
 
+class RateLimitedResponse:
+    status_code = 429
+    text = '{"error":"slow down"}'
+    headers = {"retry-after": "2.5"}
+
+    def json(self) -> dict:
+        return {"error": "slow down"}
+
+
 class HttpCancellationTests(unittest.TestCase):
+    def test_rate_limit_preserves_retry_after(self) -> None:
+        with (
+            patch("src.providers.http_common.requests.post", return_value=RateLimitedResponse()),
+            self.assertRaises(RemoteRateLimitError) as raised,
+        ):
+            post_json(
+                "https://example.invalid/v1",
+                headers={},
+                payload={},
+                timeout=30,
+            )
+        self.assertEqual(raised.exception.retry_after_seconds, 2.5)
+
     def test_in_flight_remote_request_can_be_cancelled(self) -> None:
         started = threading.Event()
         release = threading.Event()

@@ -3,12 +3,14 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from threading import Event, Lock
 from unittest.mock import patch
 
 from src.models import ChunkAnalysis, MeetingItem, MinuteAnalysis
 from src.ollama_client import LocalEngineTimeout
 from src.processing_checkpoint import ProcessingCheckpointStore
 from src.processing_runtime import ResourceSnapshot, resolve_processing_plan, split_text_chunk
+from src.providers.base import RemoteRateLimitError
 from src.resilient_pipeline import analyze_resilient_chunks
 
 
@@ -77,6 +79,56 @@ class FakeProvider:
         raise AssertionError(response_model)
 
 
+class ParallelState:
+    def __init__(self) -> None:
+        self.lock = Lock()
+        self.release = Event()
+        self.active = 0
+        self.max_active = 0
+
+
+class ParallelRemoteProvider(FakeProvider):
+    provider_id = "openai"
+    display_name = "Fake remote"
+    is_remote = True
+
+    def __init__(self, state: ParallelState) -> None:
+        super().__init__()
+        self.state = state
+
+    def structured_chat(self, system_prompt, user_prompt, response_model):
+        if response_model is not ChunkAnalysis:
+            return super().structured_chat(system_prompt, user_prompt, response_model)
+        with self.state.lock:
+            self.state.active += 1
+            self.state.max_active = max(self.state.max_active, self.state.active)
+            if self.state.active >= 2:
+                self.state.release.set()
+        try:
+            if not self.state.release.wait(1):
+                raise AssertionError("Los bloques remotos no se ejecutaron simultáneamente.")
+            return super().structured_chat(system_prompt, user_prompt, response_model)
+        finally:
+            with self.state.lock:
+                self.state.active -= 1
+
+
+class RateLimitedProvider(FakeProvider):
+    provider_id = "openai"
+    display_name = "Fake rate limited"
+    is_remote = True
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.rate_limit_calls = 0
+
+    def structured_chat(self, system_prompt, user_prompt, response_model):
+        if response_model is ChunkAnalysis and self.rate_limit_calls == 0:
+            self.rate_limit_calls += 1
+            raise RemoteRateLimitError("límite controlado", retry_after_seconds=0)
+        return super().structured_chat(system_prompt, user_prompt, response_model)
+
+
 def _healthy_plan(config: dict, chars: int = 20_000):
     snapshot = ResourceSnapshot(
         total_memory_bytes=32 * 1024**3,
@@ -88,6 +140,71 @@ def _healthy_plan(config: dict, chars: int = 20_000):
 
 
 class ResilientPipeline232Tests(unittest.TestCase):
+    def test_remote_chunks_use_bounded_parallel_clients_and_keep_order(self) -> None:
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "meeting.txt"
+            source.write_text("a\nb\nc", encoding="utf-8")
+            chunks = [
+                "[00:00:01] A: a",
+                "[00:00:02] B: b",
+                "[00:00:03] C: c",
+            ]
+            config = {
+                "processing_profile": "fast",
+                "processing_checkpoint_enabled": False,
+                "remote_parallel_requests": 3,
+                "adaptive_timeout_min_seconds": 60,
+                "adaptive_timeout_max_seconds": 600,
+            }
+            state = ParallelState()
+            primary = ParallelRemoteProvider(state)
+            result = analyze_resilient_chunks(
+                primary,
+                chunks,
+                {"meeting_date": "2026-08-19", "meeting_type": "interna"},
+                config,
+                _healthy_plan(config),
+                source,
+                "openai",
+                primary.model,
+                client_factory=lambda: ParallelRemoteProvider(state),
+            )
+            self.assertGreaterEqual(state.max_active, 2)
+            self.assertEqual(result.parallel_workers, 3)
+            self.assertEqual(result.parallel_completed_blocks, 3)
+            self.assertTrue(result.analysis.items)
+
+    def test_remote_rate_limit_retries_without_losing_progress(self) -> None:
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "meeting.txt"
+            source.write_text("a", encoding="utf-8")
+            config = {
+                "processing_profile": "fast",
+                "processing_checkpoint_enabled": False,
+                "remote_rate_limit_retries": 2,
+                "remote_retry_max_seconds": 1,
+                "adaptive_timeout_min_seconds": 60,
+                "adaptive_timeout_max_seconds": 600,
+            }
+            provider = RateLimitedProvider()
+            events: list[dict] = []
+            result = analyze_resilient_chunks(
+                provider,
+                ["[00:00:01] A: a"],
+                {"meeting_date": "2026-08-19", "meeting_type": "interna"},
+                config,
+                _healthy_plan(config),
+                source,
+                "openai",
+                provider.model,
+                telemetry=events.append,
+            )
+            self.assertEqual(result.retry_count, 1)
+            self.assertEqual(provider.rate_limit_calls, 1)
+            self.assertTrue(any(event.get("type") == "remote_rate_limited" for event in events))
+
     def test_timeout_splits_large_chunk_and_finishes(self) -> None:
         with TemporaryDirectory() as temp:
             root = Path(temp)

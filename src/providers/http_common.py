@@ -9,7 +9,7 @@ from typing import Any, TypeVar, cast
 import requests
 from pydantic import BaseModel, ValidationError
 
-from src.providers.base import ProcessingProviderError
+from src.providers.base import ProcessingProviderError, RemoteRateLimitError
 from src.providers.structured_validation import validate_model_json
 
 T = TypeVar("T", bound=BaseModel)
@@ -66,6 +66,18 @@ def post_json(
             detail = str(body.get("error") or body.get("message") or body)[:1000]
         except ValueError:
             pass
+        if response.status_code == 429:
+            retry_after: float | None = None
+            raw_retry_after = response.headers.get("retry-after")
+            if raw_retry_after:
+                try:
+                    retry_after = max(0.0, float(raw_retry_after))
+                except ValueError:
+                    retry_after = None
+            raise RemoteRateLimitError(
+                f"El servicio remoto limitó temporalmente las solicitudes: {detail}",
+                retry_after_seconds=retry_after,
+            )
         raise ProcessingProviderError(
             f"El servicio remoto respondio HTTP {response.status_code}: {detail}"
         )
