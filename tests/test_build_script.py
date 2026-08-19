@@ -92,6 +92,9 @@ class BuildScriptRegressionTests(unittest.TestCase):
         self.assertIn('"docs\\VALIDACION_$version.md"', workflow)
         self.assertNotIn("NOTAS_VERSION_2.3.7.md", workflow)
         self.assertNotIn("VALIDACION_2.3.7.md", workflow)
+        self.assertIn("Build-Complete-Installer.ps1", workflow)
+        self.assertNotIn("run: .\\build_tools\\Build-Installer.ps1", workflow)
+        self.assertIn("dist_installer/*.sha256", workflow)
 
     def test_release_manifest_records_commit_hashes_and_signatures(self):
         release = (ROOT / "build_tools" / "Release.ps1").read_text(encoding="utf-8")
@@ -106,6 +109,7 @@ class BuildScriptRegressionTests(unittest.TestCase):
         self.assertIn("no contiene sello temporal", release)
         self.assertIn("release_sequence", release)
         self.assertIn("commit = $Commit", release)
+        self.assertIn("$artifacts.Count -ne $expectedNames.Count", release)
         self.assertEqual(build.count("function Get-Sha256Hex"), 0)
 
     def test_installer_smoke_keeps_whisper_profile_out_of_scope(self):
