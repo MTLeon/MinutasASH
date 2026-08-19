@@ -62,7 +62,13 @@ class GeminiGenerateProvider(RuntimeCancellableProvider):
             "x-goog-api-key": self.api_key,
         }
         try:
-            data = post_json(endpoint, headers=headers, payload=payload, timeout=self.timeout)
+            data = post_json(
+                endpoint,
+                headers=headers,
+                payload=payload,
+                timeout=self.timeout,
+                cancelled=self._cancelled,
+            )
         except ProcessingProviderError as exc:
             if not is_schema_rejection(exc):
                 raise
@@ -80,7 +86,11 @@ class GeminiGenerateProvider(RuntimeCancellableProvider):
                 },
             }
             data = post_json(
-                endpoint, headers=headers, payload=fallback_payload, timeout=self.timeout
+                endpoint,
+                headers=headers,
+                payload=fallback_payload,
+                timeout=self.timeout,
+                cancelled=self._cancelled,
             )
         candidates = data.get("candidates") or []
         if not candidates:

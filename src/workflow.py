@@ -328,6 +328,18 @@ def analyze_meeting(
         )
         log(f"Bloques iniciales de procesamiento: {len(chunks)}")
         progress(24, f"Preparando {len(chunks)} bloque(s) recuperables")
+        client_factory = None
+        if descriptor.is_remote and int(config.get("remote_parallel_requests", 2)) > 1:
+            factory_provider_id = provider_id
+            factory_model = str(getattr(client, "model", selected_model))
+
+            def client_factory() -> Any:
+                return create_processing_provider(
+                    dict(effective_config),
+                    factory_provider_id,
+                    factory_model,
+                )
+
         resilient = analyze_resilient_chunks(
             client,
             chunks,
@@ -338,6 +350,7 @@ def analyze_meeting(
             provider_id,
             getattr(client, "model", selected_model),
             knowledge_context=knowledge_context,
+            client_factory=client_factory,
             log=log,
             progress=progress,
             telemetry=telemetry,

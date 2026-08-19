@@ -20,6 +20,8 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(settings.runtime_mode, "auto")
         self.assertTrue(settings.managed_runtime_url.startswith("https://"))
         self.assertEqual(settings.processing_provider, "ollama_local")
+        self.assertEqual(settings.remote_parallel_requests, 2)
+        self.assertEqual(settings.remote_rate_limit_retries, 3)
         self.assertEqual(settings.appearance_theme, "system")
         self.assertEqual(
             AppSettings(appearance_theme="high_contrast").appearance_theme, "high_contrast"

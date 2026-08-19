@@ -70,6 +70,9 @@ Los siguientes campos están disponibles para soporte y desarrollo. No se recomi
 | `processing_checkpoint_retention_days` | retención de procesos pausados |
 | `processing_keep_completed_checkpoint` | conserva checkpoints exitosos para diagnóstico |
 | `processing_force_chunking` | impide procesamiento de una sola etapa |
+| `remote_parallel_requests` | solicitudes remotas simultáneas; valor recomendado `2`, máximo `4` |
+| `remote_rate_limit_retries` | reintentos ante límites HTTP 429; valor recomendado `3` |
+| `remote_retry_max_seconds` | espera máxima por reintento remoto; valor recomendado `120` segundos |
 | `memory_warning_percent` | umbral de advertencia de RAM |
 | `memory_critical_percent` | umbral que fuerza un plan conservador |
 
@@ -101,6 +104,12 @@ Para borrar procesos pausados antiguos utilice diagnóstico o respete la retenci
 ## 7. Proveedores remotos
 
 Los servicios remotos siguen siendo opcionales. La confirmación antes de enviar datos fuera del equipo debe mantenerse activa. El procesamiento resiliente también divide reuniones remotas, aunque el nivel de telemetría depende del proveedor.
+
+Para acelerar reuniones largas, la aplicación puede analizar varios bloques remotos en paralelo. El valor predeterminado es `2`; el máximo deliberado es `4` para evitar consumo excesivo, límites de cuota y costos inesperados. Cada bloque usa un cliente independiente y el checkpoint se escribe de forma serializada. Si una solicitud paralela falla, ese bloque vuelve al flujo resiliente secuencial sin perder los bloques ya completados.
+
+Cuando un proveedor responde HTTP 429, la aplicación respeta `Retry-After` si está disponible y aplica una espera cancelable y limitada. Los campos `remote_rate_limit_retries` y `remote_retry_max_seconds` controlan esta recuperación. Ollama y otros motores locales permanecen secuenciales para no competir por CPU, GPU o memoria del mismo equipo.
+
+La aplicación no cambia automáticamente de un proveedor remoto a otro ni comparte credenciales entre servicios. Cualquier alternativa local conserva la política de privacidad y confirmación configurada por el usuario.
 
 ## 8. Diagnóstico
 
