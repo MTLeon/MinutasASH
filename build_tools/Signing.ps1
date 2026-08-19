@@ -67,7 +67,6 @@ function Assert-MinutasAuthenticodeSignature {
 
     $systemChain = [Security.Cryptography.X509Certificates.X509Chain]::new()
     $systemChain.ChainPolicy.RevocationMode = 'NoCheck'
-    $systemChain.ChainPolicy.DisableCertificateDownloads = $true
     $systemChain.ChainPolicy.UrlRetrievalTimeout = [TimeSpan]::FromSeconds(5)
     [void]$systemChain.Build($signer)
     $hasUntrustedRoot = @($systemChain.ChainStatus | Where-Object {
@@ -85,7 +84,6 @@ function Assert-MinutasAuthenticodeSignature {
     $customChain.ChainPolicy.TrustMode = `
         [Security.Cryptography.X509Certificates.X509ChainTrustMode]::CustomRootTrust
     $customChain.ChainPolicy.RevocationMode = 'NoCheck'
-    $customChain.ChainPolicy.DisableCertificateDownloads = $true
     $customChain.ChainPolicy.UrlRetrievalTimeout = [TimeSpan]::FromSeconds(5)
     [void]$customChain.ChainPolicy.CustomTrustStore.Add($signer)
     if (-not $customChain.Build($signer)) {

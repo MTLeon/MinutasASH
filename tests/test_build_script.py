@@ -66,6 +66,7 @@ class BuildScriptRegressionTests(unittest.TestCase):
         self.assertIn("MINUTAS_ALLOW_PINNED_SELF_SIGNED_SIGNATURE", signing)
         self.assertIn("CustomRootTrust", signing)
         self.assertIn("UntrustedRoot", signing)
+        self.assertNotIn("DisableCertificateDownloads", signing)
         self.assertIn("Assert-MinutasAuthenticodeSignature", signing)
         self.assertNotIn("$certificates | Select-Object -First 1", signing)
 
