@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$PreviousInstaller = 'dist_installer\MinutasASH_Setup_2.3.6_Online.exe',
+    [string]$PreviousInstaller = 'dist_installer\MinutasASH_Setup_2.3.7_Online.exe',
     [string]$CurrentInstaller = '',
     [ValidateRange(2, 60)][int]$StableSeconds = 6,
     [string]$OutputRoot = '.runtime\installer-upgrade-smoke'

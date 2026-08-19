@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.3.8] - 2026-08-19
+
+- Análisis remoto paralelo por bloques, acotado entre una y cuatro solicitudes.
+- Clientes remotos independientes y escritura serializada de checkpoints.
+- Recuperación secuencial de bloques fallidos sin perder resultados ya completados.
+- Reintentos cancelables ante HTTP 429 con respeto de `Retry-After` y espera máxima.
+- Cancelación propagada correctamente al proveedor Gemini.
+- Dependencias y GitHub Actions actualizadas, con construcción reproducible bloqueada.
+- Manifiesto de release con commit, hashes y huellas de firma y sello temporal.
+- Concurrencia de CI acotada para cancelar ejecuciones supersedidas.
+
 ## [2.3.7] - 2026-08-18
 
 - Optimización adaptativa de reuniones extensas y preflight multimedia.

@@ -19,9 +19,9 @@ class ReleaseIdentityTests(unittest.TestCase):
     def test_windows_resources_and_installer_match_release(self):
         version_info = (ROOT / "assets" / "version_info.txt").read_text(encoding="utf-8")
         installer = (ROOT / "installer" / "MinutasASH.iss").read_text(encoding="utf-8")
-        self.assertIn("filevers=(2, 3, 7, 0)", version_info)
-        self.assertIn("prodvers=(2, 3, 7, 0)", version_info)
-        self.assertIn("FileVersion', '2.3.7'", version_info)
+        self.assertIn("filevers=(2, 3, 8, 0)", version_info)
+        self.assertIn("prodvers=(2, 3, 8, 0)", version_info)
+        self.assertIn("FileVersion', '2.3.8'", version_info)
         self.assertIn("#ifndef MyAppVersion", installer)
         self.assertIn("VERSION.txt", installer)
         self.assertIn("MinutasASH_Setup_{#MyAppVersion}_Online", installer)

@@ -122,7 +122,7 @@ class BuildScriptRegressionTests(unittest.TestCase):
     def test_upgrade_smoke_preserves_isolated_user_data(self):
         script = (ROOT / "scripts" / "Test-InstallerUpgradeSmoke.ps1").read_text(encoding="utf-8")
 
-        self.assertIn("MinutasASH_Setup_2.3.6_Online.exe", script)
+        self.assertIn("MinutasASH_Setup_2.3.7_Online.exe", script)
         self.assertIn("MINUTAS_ASH_DATA_ROOT", script)
         self.assertIn("data_preserved_after_upgrade", script)
         self.assertIn("data_preserved_after_uninstall", script)
