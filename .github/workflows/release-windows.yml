@@ -79,7 +79,7 @@ jobs:
 
       - name: Construir y probar
         shell: pwsh
-        run: .\build_tools\Build-Installer.ps1
+        run: .\build_tools\Build-Complete-Installer.ps1
 
       - name: Generar manifiesto de release
         shell: pwsh
@@ -96,6 +96,7 @@ jobs:
           path: |
             dist_installer/*.exe
             dist_installer/*SHA256*.txt
+            dist_installer/*.sha256
             dist_installer/*MANIFEST*.json
           retention-days: 30
 
@@ -112,7 +113,8 @@ jobs:
             gh release create $tag --title "Minutas ASH $tag" --generate-notes
           }
           $releaseFiles = @(
-            Get-ChildItem dist_installer\*.exe, dist_installer\*SHA256*.txt, dist_installer\*MANIFEST*.json
+            Get-ChildItem dist_installer\*.exe, dist_installer\*SHA256*.txt,
+              dist_installer\*.sha256, dist_installer\*MANIFEST*.json
             Get-Item docs\Manual_Maestro_2.3.3.md, docs\Manual_Usuario_2.3.3.md,
               docs\Manual_Configuracion_2.3.3.md, docs\Manual_Programador_2.3.3.md
             Get-Item "docs\NOTAS_VERSION_$version.md", "docs\VALIDACION_$version.md"

@@ -75,8 +75,13 @@ function New-MinutasReleaseManifest {
                 }
             }
     )
-    if ($artifacts.Count -eq 0) {
-        throw "No se encontraron artefactos EXE de la versión $version en $artifactRoot."
+    if ($artifacts.Count -ne $expectedNames.Count) {
+        $foundNames = @($artifacts | ForEach-Object file)
+        $missingNames = @($expectedNames | Where-Object { $_ -notin $foundNames })
+        throw (
+            "El release $version requiere exactamente $($expectedNames.Count) artefactos. " +
+            "Faltan: $($missingNames -join ', ')."
+        )
     }
 
     $manifest = [ordered]@{
