@@ -53,7 +53,12 @@ jobs:
           if ([string]::IsNullOrWhiteSpace($env:CODE_SIGNING_PFX_PASSWORD)) {
             throw "Falta el secreto CODE_SIGNING_PFX_PASSWORD requerido para importar el certificado."
           }
+          if ([string]::IsNullOrWhiteSpace($env:CODE_SIGNING_THUMBPRINT)) {
+            throw "Falta el secreto CODE_SIGNING_THUMBPRINT requerido para validar el certificado."
+          }
           $pfxPath = Join-Path $env:RUNNER_TEMP "minutas-signing.pfx"
+          $importedThumbprints = @()
+          $trustEntries = @()
           try {
             [IO.File]::WriteAllBytes(
               $pfxPath,
@@ -62,16 +67,80 @@ jobs:
             $password = ConvertTo-SecureString $env:CODE_SIGNING_PFX_PASSWORD -AsPlainText -Force
             $imported = Import-PfxCertificate -FilePath $pfxPath `
               -CertStoreLocation Cert:\CurrentUser\My -Password $password
-            $certificate = @($imported) | Where-Object HasPrivateKey | Select-Object -First 1
-            if (-not $certificate) {
-              throw "El certificado importado no contiene una clave privada."
+            $importedThumbprints = @($imported | ForEach-Object Thumbprint)
+            $privateCertificates = @($imported | Where-Object HasPrivateKey)
+            if ($privateCertificates.Count -ne 1) {
+              throw "El PFX debe contener exactamente un certificado con clave privada."
             }
-            "MINUTAS_SIGNING_THUMBPRINT=$($certificate.Thumbprint)" | Out-File `
-              -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-            if ($env:CODE_SIGNING_THUMBPRINT -and
-                $certificate.Thumbprint -ne $env:CODE_SIGNING_THUMBPRINT.Replace(" ", "")) {
+            $certificate = $privateCertificates[0]
+            $expectedThumbprint = $env:CODE_SIGNING_THUMBPRINT.Replace(" ", "").ToUpperInvariant()
+            if ($certificate.Thumbprint.ToUpperInvariant() -ne $expectedThumbprint) {
               throw "La huella importada no coincide con CODE_SIGNING_THUMBPRINT."
             }
+            if ($certificate.Subject -ne "CN=ASH SIPROI Internal Code Signing") {
+              throw "El sujeto del certificado de firma no es el esperado."
+            }
+
+            $chain = [Security.Cryptography.X509Certificates.X509Chain]::new()
+            $chain.ChainPolicy.RevocationMode = "NoCheck"
+            foreach ($candidate in @($imported)) {
+              if ($candidate.Thumbprint -ne $certificate.Thumbprint) {
+                [void]$chain.ChainPolicy.ExtraStore.Add($candidate)
+              }
+            }
+            [void]$chain.Build($certificate)
+            $chainCertificates = @(
+              $chain.ChainElements | ForEach-Object Certificate |
+                Where-Object Thumbprint -NE $certificate.Thumbprint
+            )
+            if ($chainCertificates.Count -eq 0) {
+              throw "El PFX no contiene la cadena necesaria para validar la firma."
+            }
+            foreach ($chainCertificate in $chainCertificates) {
+              $storeName = if ($chainCertificate.Subject -eq $chainCertificate.Issuer) {
+                "Root"
+              } else {
+                "CA"
+              }
+              $store = [Security.Cryptography.X509Certificates.X509Store]::new(
+                $storeName,
+                [Security.Cryptography.X509Certificates.StoreLocation]::CurrentUser
+              )
+              try {
+                $store.Open([Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
+                $store.Add($chainCertificate)
+              }
+              finally {
+                $store.Close()
+              }
+              $trustEntries += "$storeName|$($chainCertificate.Thumbprint)"
+            }
+
+            $verificationChain = [Security.Cryptography.X509Certificates.X509Chain]::new()
+            $verificationChain.ChainPolicy.RevocationMode = "NoCheck"
+            if (-not $verificationChain.Build($certificate)) {
+              $statuses = @($verificationChain.ChainStatus | ForEach-Object Status) -join ", "
+              throw "La cadena temporal de firma no quedó confiable: $statuses"
+            }
+
+            "MINUTAS_SIGNING_THUMBPRINT=$($certificate.Thumbprint)" | Out-File `
+              -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            "MINUTAS_IMPORTED_MY_THUMBPRINTS=$($importedThumbprints -join ';')" | Out-File `
+              -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            "MINUTAS_IMPORTED_TRUST_ENTRIES=$($trustEntries -join ';')" | Out-File `
+              -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          }
+          catch {
+            foreach ($entry in $trustEntries) {
+              $parts = $entry.Split("|", 2)
+              Remove-Item -LiteralPath "Cert:\CurrentUser\$($parts[0])\$($parts[1])" `
+                -Force -ErrorAction SilentlyContinue
+            }
+            foreach ($thumbprint in $importedThumbprints) {
+              Remove-Item -LiteralPath "Cert:\CurrentUser\My\$thumbprint" `
+                -Force -ErrorAction SilentlyContinue
+            }
+            throw
           }
           finally {
             Remove-Item -LiteralPath $pfxPath -Force -ErrorAction SilentlyContinue
@@ -126,7 +195,14 @@ jobs:
         if: always()
         shell: pwsh
         run: |
-          if ($env:MINUTAS_SIGNING_THUMBPRINT) {
-            $path = "Cert:\CurrentUser\My\$env:MINUTAS_SIGNING_THUMBPRINT"
-            Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+          foreach ($entry in @($env:MINUTAS_IMPORTED_TRUST_ENTRIES -split ";" |
+              Where-Object { $_ })) {
+            $parts = $entry.Split("|", 2)
+            Remove-Item -LiteralPath "Cert:\CurrentUser\$($parts[0])\$($parts[1])" `
+              -Force -ErrorAction SilentlyContinue
+          }
+          foreach ($thumbprint in @($env:MINUTAS_IMPORTED_MY_THUMBPRINTS -split ";" |
+              Where-Object { $_ })) {
+            Remove-Item -LiteralPath "Cert:\CurrentUser\My\$thumbprint" `
+              -Force -ErrorAction SilentlyContinue
           }
