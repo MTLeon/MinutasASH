@@ -75,6 +75,12 @@ class BuildScriptRegressionTests(unittest.TestCase):
         self.assertIn("CODE_SIGNING_THUMBPRINT", workflow)
         self.assertIn("Import-PfxCertificate", workflow)
         self.assertIn("MINUTAS_SIGNING_THUMBPRINT", workflow)
+        self.assertIn("X509Chain", workflow)
+        self.assertIn("MINUTAS_IMPORTED_MY_THUMBPRINTS", workflow)
+        self.assertIn("MINUTAS_IMPORTED_TRUST_ENTRIES", workflow)
+        self.assertIn('"Root"', workflow)
+        self.assertIn('"CA"', workflow)
+        self.assertIn("El sujeto del certificado de firma no es el esperado", workflow)
         self.assertIn("if: always()", workflow)
         self.assertLess(
             workflow.index("gh release upload"), workflow.index("Retirar certificado temporal")
