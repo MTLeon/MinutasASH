@@ -81,20 +81,30 @@ jobs:
               throw "El sujeto del certificado de firma no es el esperado."
             }
 
-            $chain = [Security.Cryptography.X509Certificates.X509Chain]::new()
-            $chain.ChainPolicy.RevocationMode = "NoCheck"
-            foreach ($candidate in @($imported)) {
-              if ($candidate.Thumbprint -ne $certificate.Thumbprint) {
-                [void]$chain.ChainPolicy.ExtraStore.Add($candidate)
+            $isSelfSigned = $certificate.Subject -eq $certificate.Issuer
+            if ($isSelfSigned) {
+              # Trust only the public copy; keep the private key confined to CurrentUser\My.
+              $chainCertificates = @(
+                [Security.Cryptography.X509Certificates.X509Certificate2]::new(
+                  $certificate.RawData
+                )
+              )
+            } else {
+              $chain = [Security.Cryptography.X509Certificates.X509Chain]::new()
+              $chain.ChainPolicy.RevocationMode = "NoCheck"
+              foreach ($candidate in @($imported)) {
+                if ($candidate.Thumbprint -ne $certificate.Thumbprint) {
+                  [void]$chain.ChainPolicy.ExtraStore.Add($candidate)
+                }
               }
-            }
-            [void]$chain.Build($certificate)
-            $chainCertificates = @(
-              $chain.ChainElements | ForEach-Object Certificate |
-                Where-Object Thumbprint -NE $certificate.Thumbprint
-            )
-            if ($chainCertificates.Count -eq 0) {
-              throw "El PFX no contiene la cadena necesaria para validar la firma."
+              [void]$chain.Build($certificate)
+              $chainCertificates = @(
+                $chain.ChainElements | ForEach-Object Certificate |
+                  Where-Object Thumbprint -NE $certificate.Thumbprint
+              )
+              if ($chainCertificates.Count -eq 0) {
+                throw "El PFX no contiene la cadena necesaria para validar la firma."
+              }
             }
             foreach ($chainCertificate in $chainCertificates) {
               $storeName = if ($chainCertificate.Subject -eq $chainCertificate.Issuer) {
