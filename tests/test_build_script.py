@@ -78,6 +78,8 @@ class BuildScriptRegressionTests(unittest.TestCase):
         self.assertIn("X509Chain", workflow)
         self.assertIn("MINUTAS_IMPORTED_MY_THUMBPRINTS", workflow)
         self.assertIn("MINUTAS_IMPORTED_TRUST_ENTRIES", workflow)
+        self.assertIn("$isSelfSigned = $certificate.Subject -eq $certificate.Issuer", workflow)
+        self.assertIn("$certificate.RawData", workflow)
         self.assertIn('"Root"', workflow)
         self.assertIn('"CA"', workflow)
         self.assertIn("El sujeto del certificado de firma no es el esperado", workflow)
