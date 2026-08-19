@@ -2,6 +2,7 @@
 param()
 
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'Signing.ps1')
 
 function Get-MinutasReleaseVersion {
     param([Parameter(Mandatory = $true)][string]$Root)
@@ -55,17 +56,13 @@ function New-MinutasReleaseManifest {
             Sort-Object Name |
             ForEach-Object {
                 $signature = Get-AuthenticodeSignature -LiteralPath $_.FullName
-                if ($signature.Status -ne [System.Management.Automation.SignatureStatus]::Valid) {
-                    throw "La firma de $($_.Name) no es válida: $($signature.Status)."
-                }
-                if (-not $signature.TimeStamperCertificate) {
-                    throw "El artefacto $($_.Name) no contiene sello temporal."
-                }
+                $signatureStatus = Assert-MinutasAuthenticodeSignature `
+                    -Signature $signature -Path $_.FullName -RequireTimestamp
                 [ordered]@{
                     file = $_.Name
                     size_bytes = $_.Length
                     sha256 = Get-Sha256Hex -Path $_.FullName
-                    signature_status = [string]$signature.Status
+                    signature_status = $signatureStatus
                     signer_thumbprint = if ($signature.SignerCertificate) {
                         $signature.SignerCertificate.Thumbprint
                     } else { $null }
