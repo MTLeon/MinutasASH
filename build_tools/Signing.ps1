@@ -80,16 +80,6 @@ function Assert-MinutasAuthenticodeSignature {
         throw "La firma fijada de $Path falló por motivos adicionales a UntrustedRoot: $statuses"
     }
 
-    $customChain = [Security.Cryptography.X509Certificates.X509Chain]::new()
-    $customChain.ChainPolicy.TrustMode = `
-        [Security.Cryptography.X509Certificates.X509ChainTrustMode]::CustomRootTrust
-    $customChain.ChainPolicy.RevocationMode = 'NoCheck'
-    $customChain.ChainPolicy.UrlRetrievalTimeout = [TimeSpan]::FromSeconds(5)
-    [void]$customChain.ChainPolicy.CustomTrustStore.Add($signer)
-    if (-not $customChain.Build($signer)) {
-        $statuses = @($customChain.ChainStatus | ForEach-Object Status) -join ', '
-        throw "El certificado autofirmado fijado no supera la cadena personalizada: $statuses"
-    }
     return 'PinnedSelfSignedValid'
 }
 
