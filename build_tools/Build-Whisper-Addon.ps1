@@ -32,7 +32,9 @@ function Find-InnoSetup {
         "$env:LOCALAPPDATA\Programs\Inno Setup 7\ISCC.exe",
         "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe",
         "$env:ProgramFiles(x86)\Inno Setup 7\ISCC.exe",
-        "$env:ProgramFiles(x86)\Inno Setup 6\ISCC.exe"
+        "$env:ProgramFiles(x86)\Inno Setup 6\ISCC.exe",
+        "$env:ProgramFiles\Inno Setup 7\ISCC.exe",
+        "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
     )
     return $candidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
 }

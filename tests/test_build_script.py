@@ -58,6 +58,8 @@ class BuildScriptRegressionTests(unittest.TestCase):
             self.assertIn("Signing.ps1", script)
             self.assertIn("Sign-MinutasArtifact -Path", script)
             self.assertIn("Get-Sha256Hex", script)
+            self.assertIn(r"$env:ProgramFiles\Inno Setup 6\ISCC.exe", script)
+            self.assertIn(r"$env:ProgramFiles\Inno Setup 7\ISCC.exe", script)
             self.assertNotIn("Get-FileHash", script)
         self.assertIn("Set-AuthenticodeSignature", signing)
         self.assertIn("Get-MinutasCodeSigningCertificate", signing)
