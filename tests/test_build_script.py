@@ -60,6 +60,8 @@ class BuildScriptRegressionTests(unittest.TestCase):
             self.assertIn("Get-Sha256Hex", script)
             self.assertIn(r"$env:ProgramFiles\Inno Setup 6\ISCC.exe", script)
             self.assertIn(r"$env:ProgramFiles\Inno Setup 7\ISCC.exe", script)
+            self.assertIn(r"${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", script)
+            self.assertNotIn("$env:ProgramFiles(x86)", script)
             self.assertNotIn("Get-FileHash", script)
         self.assertIn("Set-AuthenticodeSignature", signing)
         self.assertIn("Get-MinutasCodeSigningCertificate", signing)
