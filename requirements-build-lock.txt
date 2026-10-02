@@ -19,7 +19,7 @@ setuptools==84.0.0
 tkinterdnd2==0.6.2
 typing-extensions==4.16.0
 typing-inspection==0.4.4
-urllib3==2.7.0
+urllib3==2.8.0
 pypdf==6.16.1
 pillow==12.3.0
 reportlab==4.5.1
