@@ -1,4 +1,4 @@
-# Minutas ASH 2.3.8
+# Minutas ASH 2.3.18
 
 Aplicación de escritorio para convertir transcripciones, documentos, audio, video y notas de reunión en minutas corporativas trazables, revisables y exportables.
 
@@ -9,6 +9,7 @@ Aplicación de escritorio para convertir transcripciones, documentos, audio, vid
 - Whisper opcional, cola recuperable, carpeta vigilada y detección por hash.
 - Extracción estructurada de decisiones, compromisos, riesgos y pendientes con evidencia.
 - Revisión asistida, acciones masivas, historial, papelera y aprendizaje controlado.
+- Biblioteca local de formatos, agendas, guías y ejemplos por proyecto, incluida en respaldos.
 - Productividad mediante atajos, selección múltiple por teclado o arrastre, búsqueda, ordenamiento y deshacer.
 - Exportación DOCX/PDF, diagnóstico protegido y observabilidad operativa.
 
@@ -26,7 +27,7 @@ python -m venv .venv
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\Quality.ps1
 ```
 
-La entrega 2.3.8 incorpora 267 pruebas, cobertura mínima de 70 %, análisis de tipos, lint, 75 escenarios visuales, auditoría de dependencias y smokes aislados de instalación y actualización.
+La entrega 2.3.18 incorpora pruebas de recuperación, cobertura mínima de 70 %, análisis de tipos, lint, escenarios visuales, auditoría de dependencias y smokes aislados de instalación y actualización.
 
 ## Construcción Windows
 
@@ -37,8 +38,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File build_tools\Build-Comple
 Artefactos locales, no versionados:
 
 ```text
-dist_installer\MinutasASH_Setup_2.3.8_Online.exe
-dist_installer\MinutasASH_Whisper_CPU_2.3.8.exe
+dist_installer\MinutasASH_Setup_2.3.18_Online.exe
+dist_installer\MinutasASH_Whisper_CPU_2.3.18.exe
 ```
 
 ## Documentación
@@ -49,8 +50,8 @@ dist_installer\MinutasASH_Whisper_CPU_2.3.8.exe
 - [Configuración](docs/Manual_Configuracion_2.3.3.md)
 - [Programación y depuración](docs/Manual_Programador_2.3.3.md)
 - [Atajos y productividad 2.3.4](docs/QOL_TECLADO_Y_TABLAS_2.3.4.md)
-- [Notas 2.3.8](docs/NOTAS_VERSION_2.3.8.md)
-- [Validación 2.3.8](docs/VALIDACION_2.3.8.md)
+- [Notas 2.3.18](docs/NOTAS_VERSION_2.3.18.md)
+- [Validación 2.3.18](docs/VALIDACION_2.3.18.md)
 
 ## Privacidad
 

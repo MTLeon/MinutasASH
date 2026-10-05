@@ -677,6 +677,7 @@ def apply_deterministic_fallback(
     uncovered: list[ActionCandidate] | tuple[ActionCandidate, ...],
     metadata: MeetingMetadata,
     minimum_confidence: float = 0.82,
+    include_informative: bool = False,
 ) -> tuple[MinuteAnalysis, int]:
     """Añade solo expresiones explícitas de alta confianza que quedaron omitidas.
 
@@ -687,6 +688,15 @@ def apply_deterministic_fallback(
 
     added = 0
     for candidate in uncovered:
+        # La cobertura automática protege decisiones y trabajo pendiente. Un
+        # antecedente conversacional no debe transformarse por sí solo en una
+        # fila que sature la revisión humana.
+        if (
+            candidate.category_hint == "informativo"
+            and not _NEXT_MEETING_RE.search(candidate.text)
+            and not include_informative
+        ):
+            continue
         if candidate.confidence < minimum_confidence:
             continue
         analysis.items.append(_candidate_to_item(candidate, metadata))

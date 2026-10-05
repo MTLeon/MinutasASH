@@ -7,6 +7,7 @@ from pathlib import Path
 from tkinter import messagebox, ttk
 from typing import Any
 
+from src.processing_checkpoint import ProcessingCheckpointStore
 from src.processing_jobs import ProcessingJobStore, is_retryable_status
 from src.provider_diagnostics import ProviderDiagnostic, diagnose_provider
 from src.providers.registry import provider_display_name
@@ -76,7 +77,7 @@ class ProcessingCenterDialog(tk.Toplevel):
         ttk.Button(heading, text="Reintentar", command=self.retry_selected).grid(
             row=0, column=3, padx=(8, 0)
         )
-        ttk.Button(heading, text="Quitar pendientes", command=self.discard_selected).grid(
+        ttk.Button(heading, text="Eliminar incompletos", command=self.discard_selected).grid(
             row=0, column=4, padx=(8, 0)
         )
         ttk.Button(heading, text="Limpiar finalizados", command=self.prune_finalized).grid(
@@ -173,10 +174,12 @@ class ProcessingCenterDialog(tk.Toplevel):
                 tags=(job.status,),
             )
         retryable = sum(is_retryable_status(job.status) for job in all_jobs)
-        discardable = sum(job.status in {"queued", "interrupted"} for job in all_jobs)
+        discardable = sum(
+            job.status in {"queued", "interrupted", "failed", "cancelled"} for job in all_jobs
+        )
         self.status_var.set(
             f"{len(jobs)} de {len(all_jobs)} ejecución(es) · {retryable} reintentable(s) · "
-            f"{discardable} pendiente(s) que puede retirar."
+            f"{discardable} incompleto(s) que puede eliminar."
         )
         self._show_selected_detail()
 
@@ -197,8 +200,8 @@ class ProcessingCenterDialog(tk.Toplevel):
             "Puede reintentarse y recuperar el checkpoint compatible."
             if is_retryable_status(job.status) and source.is_file()
             else (
-                "Puede retirarse de la cola sin borrar su fuente."
-                if job.status in {"queued", "interrupted"}
+                "Puede eliminarse junto con su checkpoint, sin borrar la fuente original."
+                if job.status in {"queued", "interrupted", "failed", "cancelled"}
                 else "No requiere acción; use la limpieza de historial cuando corresponda."
             )
         )
@@ -268,8 +271,8 @@ class ProcessingCenterDialog(tk.Toplevel):
         selection = self.tree.selection()
         if not selection:
             messagebox.showinfo(
-                "Quitar pendientes",
-                "Seleccione uno o más procesos en espera o interrumpidos.",
+                "Eliminar incompletos",
+                "Seleccione uno o más procesos en espera, interrumpidos, cancelados o con error.",
                 parent=self,
             )
             return
@@ -277,36 +280,58 @@ class ProcessingCenterDialog(tk.Toplevel):
         if len(jobs) != len(selection):
             self.refresh()
             messagebox.showwarning(
-                "Quitar pendientes",
+                "Eliminar incompletos",
                 "La lista cambió antes de completar la acción. Revísela e inténtelo nuevamente.",
                 parent=self,
             )
             return
-        invalid = [job for job in jobs if job.status not in {"queued", "interrupted"}]
+        incomplete_statuses = {"queued", "interrupted", "failed", "cancelled"}
+        invalid = [job for job in jobs if job.status not in incomplete_statuses]
         if invalid:
             messagebox.showwarning(
-                "Quitar pendientes",
-                "Solo se pueden quitar procesos en espera o interrumpidos. "
+                "Eliminar incompletos",
+                "Solo se pueden eliminar procesos en espera, interrumpidos, cancelados o con error. "
                 "Los procesos activos deben cancelarse desde la ventana principal.",
                 parent=self,
             )
             return
         count = len(jobs)
         if not messagebox.askyesno(
-            "Quitar pendientes",
-            f"Se quitarán {count} proceso(s) pendiente(s) de la cola.\n\n"
+            "Eliminar incompletos",
+            f"Se eliminarán {count} proceso(s) incompleto(s) y sus checkpoints recuperables.\n\n"
             "No se eliminarán los archivos de origen. ¿Continuar?",
             parent=self,
         ):
             return
-        removed = sum(self.store.discard_recoverable(job.job_id) for job in jobs)
+        all_jobs = self.store.list(limit=100_000)
+        selected_ids = {job.job_id for job in jobs}
+        active_sources = {
+            job.source_path
+            for job in all_jobs
+            if job.job_id not in selected_ids and job.status in {"queued", "running"}
+        }
+        removed = sum(self.store.discard_incomplete(job.job_id) for job in jobs)
+        checkpoint_store = ProcessingCheckpointStore()
+        removed_checkpoints = 0
+        protected_sources = 0
+        for source_path in {job.source_path for job in jobs}:
+            if source_path in active_sources:
+                protected_sources += 1
+                continue
+            removed_checkpoints += checkpoint_store.delete_for_source(source_path)
         self.refresh()
         if removed == count:
-            self.status_var.set(f"Se retiraron {removed} proceso(s) pendiente(s) de la cola.")
+            detail = (
+                f"Se eliminaron {removed} proceso(s) incompleto(s) y "
+                f"{removed_checkpoints} checkpoint(s)."
+            )
+            if protected_sources:
+                detail += " Se conservaron checkpoints de fuentes con un proceso activo."
+            self.status_var.set(detail)
         else:
             messagebox.showwarning(
-                "Quitar pendientes",
-                f"Se retiraron {removed} de {count} proceso(s); los restantes cambiaron de estado.",
+                "Eliminar incompletos",
+                f"Se eliminaron {removed} de {count} proceso(s); los restantes cambiaron de estado.",
                 parent=self,
             )
 

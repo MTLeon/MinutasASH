@@ -211,7 +211,9 @@ def prepare_audio_copy(
 
     FFmpeg is preferred for speed. When it is unavailable, the installed
     Whisper worker performs the same operation using its bundled media stack.
-    Source deletion is opt-in and occurs only after a non-empty copy exists.
+    The original source is immutable: this function only creates a verified
+    preparation copy. ``delete_source`` remains accepted for compatibility
+    with older callers but is deliberately ignored.
     """
     source_path = Path(source).expanduser().resolve()
     if not source_path.is_file():
@@ -295,10 +297,10 @@ def prepare_audio_copy(
 
     source_bytes = source_path.stat().st_size
     output_bytes = output_path.stat().st_size
+    # Nunca borrar el respaldo audiovisual entregado por el usuario, incluso si
+    # una configuración anterior todavía solicita ``delete_source=True``.
+    _ = delete_source
     source_deleted = False
-    if delete_source:
-        source_path.unlink()
-        source_deleted = True
     return AudioPreparationResult(
         source_path=source_path,
         output_path=output_path,

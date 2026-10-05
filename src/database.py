@@ -24,7 +24,7 @@ from src.models import Attendee, MeetingMetadata, MinuteAnalysis
 from src.release_identity import APP_VERSION
 from src.runtime_paths import database_path
 
-CURRENT_SCHEMA_VERSION = 8
+CURRENT_SCHEMA_VERSION = 9
 
 
 def _inserted_id(cursor: sqlite3.Cursor) -> int:
@@ -478,6 +478,30 @@ class AppDatabase:
         if not self._column_exists(db, "meetings", "pdf_path"):
             db.execute("ALTER TABLE meetings ADD COLUMN pdf_path TEXT")
 
+    def _migration_9(self, db: sqlite3.Connection) -> None:
+        """Biblioteca de referencias documentales aplicables por proyecto."""
+
+        db.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS standard_references (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                reference_type TEXT NOT NULL,
+                project_code TEXT,
+                client TEXT,
+                file_name TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                sha256 TEXT NOT NULL,
+                notes TEXT,
+                active INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_standard_references_scope
+                ON standard_references(project_code, client, active, title COLLATE NOCASE);
+            """
+        )
+
     def _initialize(self) -> None:
         with self.connect() as db:
             version = self._detect_schema_version(db)
@@ -498,6 +522,7 @@ class AppDatabase:
                 6: self._migration_6,
                 7: self._migration_7,
                 8: self._migration_8,
+                9: self._migration_9,
             }
             while version < CURRENT_SCHEMA_VERSION:
                 target = version + 1
@@ -1207,6 +1232,79 @@ class AppDatabase:
                 if row:
                     return dict(row)
         return None
+
+    # ------------------------------------------------------------------
+    # Biblioteca de estándares y referencias
+    # ------------------------------------------------------------------
+    def register_standard_reference(self, record: dict) -> int:
+        now = datetime.now().isoformat(timespec="seconds")
+        with self.connect() as db:
+            cursor = db.execute(
+                """
+                INSERT INTO standard_references(
+                    title, reference_type, project_code, client, file_name, file_path,
+                    sha256, notes, active, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+                """,
+                (
+                    record["title"],
+                    record["reference_type"],
+                    record.get("project_code") or None,
+                    record.get("client") or None,
+                    record["file_name"],
+                    record["file_path"],
+                    record["sha256"],
+                    record.get("notes") or None,
+                    now,
+                    now,
+                ),
+            )
+            reference_id = _inserted_id(cursor)
+        self.log_audit("install", "standard_reference", str(reference_id), None, record)
+        return reference_id
+
+    def list_standard_references(
+        self, *, project_code: str | None = None, include_inactive: bool = True
+    ) -> list[dict]:
+        clauses: list[str] = []
+        values: list[str] = []
+        if project_code:
+            clauses.append("(project_code IS NULL OR project_code=?)")
+            values.append(project_code)
+        if not include_inactive:
+            clauses.append("active=1")
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        with self.connect() as db:
+            rows = db.execute(
+                f"SELECT * FROM standard_references {where} "
+                "ORDER BY active DESC, title COLLATE NOCASE, id DESC",
+                values,
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def get_standard_reference(self, reference_id: int) -> dict | None:
+        with self.connect() as db:
+            row = db.execute(
+                "SELECT * FROM standard_references WHERE id=?", (reference_id,)
+            ).fetchone()
+        return dict(row) if row else None
+
+    def set_standard_reference_active(self, reference_id: int, active: bool) -> None:
+        before = self.get_standard_reference(reference_id)
+        if not before:
+            raise ValueError("No se encontró la referencia.")
+        with self.connect() as db:
+            db.execute(
+                "UPDATE standard_references SET active=?, updated_at=? WHERE id=?",
+                (int(active), datetime.now().isoformat(timespec="seconds"), reference_id),
+            )
+        self.log_audit(
+            "activate" if active else "deactivate",
+            "standard_reference",
+            str(reference_id),
+            before,
+            self.get_standard_reference(reference_id),
+        )
 
     # ------------------------------------------------------------------
     # Auditoría, integridad y respaldo

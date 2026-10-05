@@ -1,5 +1,67 @@
 # Changelog
 
+## [2.3.18] - 2026-10-05
+
+- Los perfiles local automático, rápido y equilibrado unen los bloques ya analizados de forma determinista; sólo el perfil Preciso consolida nuevamente con IA. Esto elimina consolidaciones locales prolongadas en reuniones extensas.
+- La cancelación durante consolidación deja el checkpoint en pausa y conserva todos los bloques terminados para continuar desde la misma fuente.
+- El análisis remoto admite entre una y ocho solicitudes simultáneas y usa seis como valor predeterminado.
+- La destilación acepta minutas finales DOCX o PDF; el PDF conserva responsable y plazo cuando aparecen como texto seleccionable y siempre exige revisión humana.
+
+## [2.3.17] - 2026-10-05
+
+- Nuevo flujo de destilación local: convierte una transcripción y una minuta DOCX final validada en un ejemplo oro JSONL revisable.
+- Los ejemplos exigen proyecto y cliente, se mantienen aislados y nunca entrenan ni transmiten datos automáticamente.
+- La matriz de acuerdos se extrae de forma estructurada para preparar conjuntos de ajuste LoRA con trazabilidad.
+
+## [2.3.16] - 2026-10-01
+
+- La fuente original de audio o video queda protegida: el flujo sólo crea copias de preparación y transcripciones.
+- Se retiró la opción de eliminar la fuente original de la interfaz.
+- Las solicitudes antiguas que aún indiquen eliminación se ignoran de forma segura.
+
+## [2.3.15] - 2026-10-01
+
+- Los estados futuros narrados sin ejecutor ni acción asignada se reclasifican como antecedentes informativos, en lugar de compromisos falsos.
+- Las acciones similares a compromisos o pendientes aprobados de minutas anteriores se marcan como excepción de continuidad para confirmar si son una actualización o una repetición.
+- Los controles de precisión y continuidad operan localmente, sin agregar llamadas al modelo ni demora al procesamiento.
+
+## [2.3.14] - 2026-10-01
+
+- El motor rápido reduce consolidaciones y recuperaciones lentas en transcripciones extensas sin perder checkpoints.
+- La detección prioriza compromisos, decisiones, riesgos, plazos y entregables verificables; descarta antecedentes genéricos sin impacto material.
+- La revisión por excepciones queda activa por defecto para enfocar la revisión humana sólo en resultados ambiguos o de baja confianza.
+- La emisión para el proyecto 3165 usa el estándar DOCX activo de Anglo American Sur, clasifica los puntos por sección y conserva códigos estables aun con listas extensas.
+
+## [2.3.13] - 2026-10-01
+
+- El proyecto 3165 aplica automáticamente el formato DOCX activo de Anglo American Sur al emitir la minuta.
+- Nuevo emisor Anglo que conserva la matriz operacional y excluye filas descartadas.
+- El análisis descarta antecedentes informativos genéricos sin impacto material y el PDF ASH se desactiva cuando se emite el formato Anglo.
+- La revisión por excepciones queda activada por defecto y la matriz Anglo clasifica los puntos en HSE, Control y Programación, Calidad, Ingeniería u Otros.
+
+## [2.3.12] - 2026-09-30
+
+- El perfil local rápido une bloques de forma determinista y evita llamadas de consolidación redundantes.
+- En transcripciones extensas, la cobertura del perfil rápido usa recuperación local auditable en lugar de una segunda pasada lenta del modelo.
+- La recuperación automática ya no incorpora antecedentes informativos como filas obligatorias; prioriza acuerdos, compromisos y pendientes explícitos.
+
+## [2.3.11] - 2026-09-30
+
+- La comprobación focalizada de cobertura procesa grupos más pequeños y divide automáticamente una respuesta JSON incompleta antes de continuar.
+
+## [2.3.10] - 2026-09-30
+
+- Barra inferior de análisis fijada a la ventana para conservar el avance y controles visibles al reducir la altura.
+- Cancelación confirmada como estado propio, con checkpoint preservado y sin mensaje de error.
+- El Centro de procesamiento elimina trabajos incompletos, fallidos o cancelados y sus checkpoints asociados, sin borrar el archivo fuente.
+
+## [2.3.9] - 2026-09-30
+
+- Biblioteca local de formatos, agendas, guías y ejemplos por proyecto.
+- Referencias protegidas por hash, auditables, activables y respaldadas junto a la base local.
+- Soporte inicial para el estándar semanal de Anglo American del proyecto P3165.
+- Recuperación de JSON malformado durante análisis local para reintentar o dividir el bloque sin perder checkpoints previos.
+
 ## [2.3.8] - 2026-08-19
 
 - Análisis remoto paralelo por bloques, acotado entre una y cuatro solicitudes.

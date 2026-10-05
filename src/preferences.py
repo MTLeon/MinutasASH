@@ -466,7 +466,7 @@ class PreferencesDialog(tk.Toplevel):
             value=int(self.working.get("remote_timeout_seconds", 300))
         )
         self.remote_parallel_var = tk.IntVar(
-            value=int(self.working.get("remote_parallel_requests", 2))
+            value=int(self.working.get("remote_parallel_requests", 6))
         )
         self.credential_status_var = tk.StringVar()
         self.provider_description_var = tk.StringVar()
@@ -596,7 +596,7 @@ class PreferencesDialog(tk.Toplevel):
         ttk.Spinbox(
             resilience,
             from_=1,
-            to=4,
+            to=8,
             textvariable=self.remote_parallel_var,
             width=10,
         ).grid(row=2, column=1, sticky="w", pady=5)

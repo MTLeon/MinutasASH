@@ -107,6 +107,7 @@ class MediaTranscriptionRequest:
     source_path: Path
     optimize_audio: bool
     output_format: str = "m4a"
+    # Se conserva para poder leer solicitudes antiguas; la fuente nunca se borra.
     delete_source: bool = False
     model_name: str = "base"
     language: str = "es"
@@ -132,7 +133,7 @@ def transcribe_meeting_media(request: MediaTranscriptionRequest) -> MediaTranscr
         preparation = prepare_audio_copy(
             source,
             output_format=request.output_format,
-            delete_source=request.delete_source,
+            delete_source=False,
         )
         source = preparation.output_path
     transcript = transcribe_media(

@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import unittest
 
-from src.meeting_continuity import compare_minute_analyses, prior_actionable_items
+from src.meeting_continuity import (
+    compare_minute_analyses,
+    flag_repeated_actionable_items,
+    prior_actionable_items,
+)
 from src.models import MeetingItem, MinuteAnalysis
 
 
@@ -73,6 +77,30 @@ class MeetingContinuityTests(unittest.TestCase):
         self.assertEqual([value.description for value in result.removed], ["Cerrar presupuesto"])
         self.assertEqual(len(result.changed), 1)
         self.assertEqual(result.changed[0].fields, ("responsible", "due_date_iso"))
+
+    def test_flags_a_similar_current_action_for_human_continuity_review(self):
+        previous = MinuteAnalysis(items=[item(description="Emitir planos IFC para revisión")])
+        rows = [
+            {
+                "id": 8,
+                "meeting_date": "2026-09-24",
+                "minute_number": "MRE-08",
+                "project_code": "P100",
+                "analysis_json": previous.model_dump_json(),
+            }
+        ]
+        current = [
+            item(
+                description="Emitir los planos IFC para revisión técnica",
+                review_status="aprobado",
+            )
+        ]
+
+        matches = flag_repeated_actionable_items(current, rows, project_code="P100")
+
+        self.assertEqual(len(matches), 1)
+        self.assertEqual(current[0].review_status, "pendiente")
+        self.assertIn("Continuidad:", current[0].review_notes or "")
 
 
 if __name__ == "__main__":

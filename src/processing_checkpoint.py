@@ -8,6 +8,7 @@ cierre inesperado sin repetir los bloques ya aprobados por el esquema JSON.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -138,6 +139,22 @@ class ProcessingCheckpointStore:
     def delete(self, key: str) -> None:
         self.path_for(key).unlink(missing_ok=True)
 
+    def delete_for_source(self, source_path: str) -> int:
+        """Elimina checkpoints asociados a una fuente descartada explícitamente."""
+
+        expected = _normalized_source_path(source_path)
+        removed = 0
+        for path in self.root.glob("*.json"):
+            checkpoint = self.load(path.stem)
+            if checkpoint is None or _normalized_source_path(checkpoint.source_path) != expected:
+                continue
+            try:
+                path.unlink()
+            except OSError:
+                continue
+            removed += 1
+        return removed
+
     def mark_completed(self, checkpoint: ProcessingCheckpoint) -> None:
         checkpoint.status = "completed"
         self.save(checkpoint)
@@ -182,6 +199,10 @@ class ProcessingCheckpointStore:
             shutil.move(str(path), str(destination))
         except OSError:
             pass
+
+
+def _normalized_source_path(value: str) -> str:
+    return os.path.normcase(os.path.normpath(str(Path(value).expanduser())))
 
 
 def make_initial_checkpoint(

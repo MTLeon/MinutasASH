@@ -8,14 +8,16 @@ from unittest.mock import patch
 
 from src.coverage_guard import (
     _LOW_VALUE_RE,
+    ActionCandidate,
     apply_deterministic_fallback,
     evaluate_coverage,
     extract_action_candidates,
 )
-from src.models import Attendee, MeetingMetadata, MinuteAnalysis
+from src.models import Attendee, MeetingItem, MeetingMetadata, MinuteAnalysis
+from src.ollama_client import StructuredOutputTruncated
 from src.postprocess import normalize_analysis
 from src.vtt_reader import TranscriptSegment, read_teams_vtt
-from src.workflow import analyze_meeting, generate_word_package
+from src.workflow import _recover_coverage_batch, analyze_meeting, generate_word_package
 
 ROOT = Path(__file__).resolve().parents[1]
 EXAMPLE = ROOT / "entrada" / "reunion_prueba_ejemplo.vtt"
@@ -34,7 +36,50 @@ class EmptyProvider:
         return response_model()
 
 
+class SplittingRecoveryProvider:
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    def configure_request(self, **_kwargs) -> None:
+        return None
+
+    def structured_chat(self, _system_prompt, user_prompt, response_model):
+        self.calls.append(user_prompt)
+        if user_prompt.count("sugerencia=") > 1:
+            raise StructuredOutputTruncated("JSON incompleto")
+        return response_model(
+            items=[MeetingItem(category="pendiente", description="Punto recuperado")]
+        )
+
+
 class CoverageGuardTests(unittest.TestCase):
+    def test_coverage_recovery_splits_a_truncated_batch(self):
+        candidates = extract_action_candidates(read_teams_vtt(EXAMPLE, merge_adjacent=False))[:2]
+        metadata = MeetingMetadata(meeting_date="2026-07-30", client="Cliente de prueba")
+        provider = SplittingRecoveryProvider()
+        logs: list[str] = []
+
+        recovered = _recover_coverage_batch(
+            provider,
+            candidates,
+            metadata,
+            "",
+            type(
+                "Profile",
+                (),
+                {"context_length": 4096, "chunk_chars": 5200, "timeout_seconds": 900},
+            )(),
+            {},
+            batch_label="1",
+            total_batches=1,
+            log=logs.append,
+            cancelled=lambda: False,
+        )
+
+        self.assertEqual(len(recovered), 2)
+        self.assertEqual(len(provider.calls), 3)
+        self.assertTrue(any("dividirá" in message for message in logs))
+
     def test_low_value_filter_rejects_long_numeric_prefix_without_backtracking(self):
         value = "9" * 10_000 + "x"
 
@@ -102,6 +147,33 @@ class CoverageGuardTests(unittest.TestCase):
         self.assertEqual(analysis.next_meeting.time_text, "10:00")
         self.assertEqual(analysis.items[4].due_date_text, "el jueves, 10:00")
         self.assertEqual(evaluate_coverage(candidates, analysis).ratio, 1.0)
+
+    def test_deterministic_fallback_skips_general_informative_candidates(self):
+        candidates = [
+            ActionCandidate(
+                index=1,
+                category_hint="informativo",
+                text="Se menciona que el taller será conversado.",
+                speaker="Hablante no identificado",
+                evidence="00:01:00",
+                reason="actividad futura planificada",
+                confidence=0.90,
+            ),
+            ActionCandidate(
+                index=2,
+                category_hint="compromiso",
+                text="ASH enviará la revisión mañana.",
+                speaker="Hablante no identificado",
+                evidence="00:02:00",
+                reason="marcador explícito de acción",
+                confidence=0.97,
+            ),
+        ]
+        analysis, added = apply_deterministic_fallback(
+            MinuteAnalysis(), candidates, MeetingMetadata(meeting_date="2026-09-30")
+        )
+        self.assertEqual(added, 1)
+        self.assertEqual([item.category for item in analysis.items], ["compromiso"])
 
     @patch("src.workflow.create_processing_provider", return_value=EmptyProvider())
     def test_workflow_rejects_an_empty_but_valid_model_response(self, _provider):

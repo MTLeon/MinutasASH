@@ -57,6 +57,34 @@ class ProcessingCheckpoint232Tests(unittest.TestCase):
             self.assertEqual(store.prune(1), 1)
             self.assertFalse(path.exists())
 
+    def test_delete_for_source_removes_only_matching_checkpoints(self) -> None:
+        with TemporaryDirectory() as temp:
+            store = ProcessingCheckpointStore(Path(temp))
+            first = make_initial_checkpoint(
+                key="first",
+                source_path="C:/reuniones/uno.vtt",
+                source_sha256="a" * 64,
+                provider_id="ollama_local",
+                model="qwen3:8b",
+                profile_id="fast",
+                chunks=["uno"],
+            )
+            second = make_initial_checkpoint(
+                key="second",
+                source_path="C:/reuniones/dos.vtt",
+                source_sha256="b" * 64,
+                provider_id="ollama_local",
+                model="qwen3:8b",
+                profile_id="fast",
+                chunks=["dos"],
+            )
+            store.save(first)
+            store.save(second)
+
+            self.assertEqual(store.delete_for_source("C:/reuniones/uno.vtt"), 1)
+            self.assertIsNone(store.load("first"))
+            self.assertIsNotNone(store.load("second"))
+
 
 if __name__ == "__main__":
     unittest.main()

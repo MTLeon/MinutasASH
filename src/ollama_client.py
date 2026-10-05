@@ -35,7 +35,7 @@ class StructuredOutputTruncated(StructuredOutputError):
 
 def _validation_indicates_truncation(
     content: str,
-    error: ValidationError,
+    error: ValidationError | json.JSONDecodeError,
     metrics: dict[str, Any],
 ) -> bool:
     """Detecta respuestas JSON cortadas sin confundirlas con errores de campos."""
@@ -43,6 +43,9 @@ def _validation_indicates_truncation(
     done_reason = str(metrics.get("done_reason") or "").casefold()
     if done_reason in {"length", "max_tokens", "token_limit"}:
         return True
+
+    if isinstance(error, json.JSONDecodeError):
+        return error.pos >= max(0, len(content) - 16) or "unterminated" in error.msg.casefold()
 
     messages = " ".join(
         f"{item.get('type', '')} {item.get('msg', '')}" for item in error.errors()
@@ -383,7 +386,7 @@ class OllamaClient:
             {"role": "user", "content": user_prompt},
         ]
         messages = list(base_messages)
-        last_validation_error: ValidationError | None = None
+        last_validation_error: ValidationError | json.JSONDecodeError | None = None
         last_content = ""
         last_was_truncated = False
         base_limit = self._output_limit()
@@ -416,13 +419,13 @@ class OllamaClient:
 
             try:
                 return validate_model_json(last_content, response_model)
-            except ValidationError as exc:
+            except (ValidationError, json.JSONDecodeError) as exc:
                 last_validation_error = exc
                 last_was_truncated = _validation_indicates_truncation(last_content, exc, metrics)
                 self._emit(
                     "schema_validation_failed",
                     attempt=attempt + 1,
-                    error_count=len(exc.errors()),
+                    error_count=len(exc.errors()) if isinstance(exc, ValidationError) else 1,
                     truncated=last_was_truncated,
                     output_token_limit=output_limit,
                 )

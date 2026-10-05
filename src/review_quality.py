@@ -71,6 +71,8 @@ def assess_item(item: MeetingItem) -> ItemAssessment:
         reasons.append("Recuperado por el control de cobertura.")
     elif origin == "importado":
         reasons.append("Sugerido desde una minuta anterior; confirme que siga vigente.")
+    if "continuidad:" in (item.review_notes or "").casefold():
+        reasons.append("Coincide con una acción de una minuta anterior; confirme su continuidad.")
     if item.confidence < 0.70:
         reasons.append("Confianza de extracción baja.")
     if item.category == "compromiso":
