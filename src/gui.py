@@ -100,6 +100,7 @@ from src.review_quality import assess_item, items_for_document, summarize_review
 from src.runtime_paths import cache_dir, inbox_dir, install_root
 from src.settings import load_settings_dict
 from src.source_dialogs import ManualSourceDialog
+from src.standard_library import select_document_format
 from src.teams_graph import TeamsGraphError
 from src.teams_graph_service import TeamsGraphImportRequest, import_teams_transcripts
 from src.template_service import TemplateService
@@ -456,6 +457,9 @@ Ctrl+Z  Deshacer""",
         shell = ttk.Frame(self, padding=(16, 0, 16, 12))
         shell.pack(fill="both", expand=True)
         self._build_step_bar(shell)
+        # Reserve the footer before the notebook gets the remaining vertical space.
+        # This keeps progress and the cancellation action reachable on short windows.
+        self._build_bottom_bar(shell)
 
         style = ttk.Style(self)
         with contextlib.suppress(tk.TclError):
@@ -490,7 +494,6 @@ Ctrl+Z  Deshacer""",
         self._build_history_tab()
         super()._build_settings_tab()
         super()._build_activity_tab()
-        self._build_bottom_bar(shell)
 
     def _build_header(self) -> None:
         header = ttk.Frame(self, padding=(20, 12), style="Header.TFrame")
@@ -574,7 +577,7 @@ Ctrl+Z  Deshacer""",
 
     def _build_bottom_bar(self, parent: ttk.Frame) -> None:
         bottom = ttk.Frame(parent, padding=(0, 10, 0, 0))
-        bottom.pack(fill="x")
+        bottom.pack(side="bottom", fill="x")
         status_box = ttk.Frame(bottom)
         status_box.pack(side="left", fill="x", expand=True)
         ttk.Label(status_box, textvariable=self.progress_text_var).pack(anchor="w")
@@ -3600,7 +3603,23 @@ Ctrl+Z  Deshacer""",
             config["managed_template_key"] = str(record["template_key"])
             config["managed_template_version"] = str(record["version_label"])
         else:
-            config["document_provider"] = "ash_minutes_v1"
+            references = self.db.list_standard_references(
+                project_code=metadata.project_code or None,
+                include_inactive=False,
+            )
+            anglo_format = select_document_format(
+                references, metadata.project_code, metadata.client
+            )
+            if anglo_format:
+                config["document_provider"] = "anglo_minutes_v1"
+                config["anglo_template_path"] = str(anglo_format["file_path"])
+                # El PDF nativo actual corresponde al formato ASH. No se debe
+                # emitir una segunda representación con una identidad distinta
+                # de la plantilla Anglo seleccionada.
+                config["generate_pdf"] = False
+                self._log(f"Formato aplicado: {anglo_format['title']}.")
+            else:
+                config["document_provider"] = "ash_minutes_v1"
             config.pop("managed_template_path", None)
         return config
 
@@ -3943,6 +3962,26 @@ Ctrl+Z  Deshacer""",
     # ------------------------------------------------------------------
     def _analysis_complete(self, bundle: AnalysisBundle) -> None:
         super()._analysis_complete(bundle)
+        project_code = self.meta_vars["project_code"].get().strip()
+        if project_code:
+            try:
+                from src.meeting_continuity import flag_repeated_actionable_items
+
+                rows = self.db.list_project_continuity_rows(project_code)
+                if self.current_meeting_id:
+                    rows = [
+                        row for row in rows if int(row.get("id") or 0) != self.current_meeting_id
+                    ]
+                repeated = flag_repeated_actionable_items(
+                    self.items, rows, project_code=project_code
+                )
+                if repeated:
+                    self._log(
+                        f"Continuidad: {len(repeated)} accion(es) coinciden con minutas anteriores; "
+                        "requieren confirmacion."
+                    )
+            except Exception as exc:
+                self._log(f"Continuidad no disponible para esta revision: {exc}")
         attention_count = len(self.items)
         if bool(self.config_data.get("review_by_exceptions", False)):
             outcome = apply_exception_review(

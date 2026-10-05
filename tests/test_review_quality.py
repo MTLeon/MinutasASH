@@ -56,6 +56,23 @@ class ReviewQualityTests(unittest.TestCase):
             "Sugerido desde una minuta anterior; confirme que siga vigente.", assessment.reasons
         )
 
+    def test_continuity_note_requires_confirmation(self):
+        item = MeetingItem(
+            category="compromiso",
+            description="Emitir planos IFC.",
+            responsible="Diego",
+            due_date_iso="2026-10-05",
+            evidence="00:10:00.000",
+            confidence=0.95,
+            review_status="aprobado",
+            review_notes="Continuidad: coincide con una minuta previa.",
+        )
+
+        assessment = assess_item(item)
+
+        self.assertEqual(assessment.level, "amarillo")
+        self.assertTrue(any("continuidad" in reason.casefold() for reason in assessment.reasons))
+
     def test_ambiguous_commitment_fields_explain_why_review_is_needed(self):
         item = MeetingItem(
             category="compromiso",

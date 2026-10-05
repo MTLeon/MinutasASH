@@ -20,8 +20,8 @@ class AppSettings(BaseModel):
 
     model_config = ConfigDict(extra="ignore", str_strip_whitespace=True)
 
-    app_version: str = "2.3.8"
-    release_sequence: int = Field(default=2003008, ge=1)
+    app_version: str = "2.3.18"
+    release_sequence: int = Field(default=2003018, ge=1)
     product_generation: int = Field(default=2, ge=1)
     legacy_predecessor: str = "2.3.2"
     schema_version: int = Field(default=6, ge=1)
@@ -46,6 +46,7 @@ class AppSettings(BaseModel):
     processing_split_on_structure_error: bool = True
     processing_min_chunk_chars: int = Field(default=1800, ge=1000, le=10000)
     processing_consolidation_batch_chars: int = Field(default=12000, ge=5000, le=100000)
+    processing_fast_local_merge: bool = True
     processing_overlap_lines: int = Field(default=2, ge=0, le=8)
     processing_checkpoint_enabled: bool = True
     processing_checkpoint_retention_days: int = Field(default=14, ge=1, le=365)
@@ -96,7 +97,7 @@ class AppSettings(BaseModel):
         "ollama_local", "azure_openai", "openai", "anthropic", "gemini", "openai_compatible"
     ] = "ollama_local"
     remote_timeout_seconds: int = Field(default=300, ge=30, le=3600)
-    remote_parallel_requests: int = Field(default=2, ge=1, le=4)
+    remote_parallel_requests: int = Field(default=6, ge=1, le=8)
     remote_rate_limit_retries: int = Field(default=3, ge=0, le=8)
     remote_retry_max_seconds: int = Field(default=120, ge=1, le=900)
     remote_input_cost_per_million_usd: float = Field(default=0.0, ge=0.0)
@@ -117,6 +118,8 @@ class AppSettings(BaseModel):
     # expresiones explícitas de la transcripción para evitar falsos negativos.
     semantic_guard_enabled: bool = True
     semantic_guard_second_pass: bool = True
+    semantic_guard_fast_local_fallback: bool = True
+    semantic_guard_include_informative_candidates: bool = False
     semantic_guard_deterministic_fallback: bool = True
     semantic_guard_min_coverage: float = Field(default=0.80, ge=0.0, le=1.0)
     semantic_guard_fallback_min_confidence: float = Field(default=0.82, ge=0.0, le=1.0)
@@ -163,7 +166,7 @@ class AppSettings(BaseModel):
     inbox_automation_max_retries: int = Field(default=3, ge=1, le=10)
     inbox_scan_recursively: bool = True
     inbox_scan_max_files: int = Field(default=500, ge=10, le=10000)
-    review_by_exceptions: bool = False
+    review_by_exceptions: bool = True
     review_auto_approval_threshold: float = Field(default=0.90, ge=0.70, le=1.0)
     automation_auto_generate_document: bool = False
     generate_pdf: bool = True

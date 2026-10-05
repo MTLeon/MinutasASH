@@ -5,7 +5,7 @@ from __future__ import annotations
 import tkinter as tk
 from dataclasses import dataclass
 from pathlib import Path
-from tkinter import messagebox, ttk
+from tkinter import ttk
 
 
 @dataclass(frozen=True)
@@ -38,7 +38,6 @@ class MediaPreparationDialog(tk.Toplevel):
 
         self.optimize_var = tk.BooleanVar(value=True)
         self.format_var = tk.StringVar(value="M4A")
-        self.delete_source_var = tk.BooleanVar(value=False)
         frame = ttk.Frame(self, padding=16)
         frame.grid(sticky="nsew")
         ttk.Label(
@@ -86,14 +85,8 @@ class MediaPreparationDialog(tk.Toplevel):
             frame, textvariable=self.format_var, values=("M4A", "MP3"), state="readonly", width=12
         )
         self.format_combo.grid(row=6, column=1, sticky="w", pady=(10, 0))
-        self.delete_check = ttk.Checkbutton(
-            frame,
-            text="Eliminar la fuente original despues de verificar la copia",
-            variable=self.delete_source_var,
-        )
-        self.delete_check.grid(row=7, column=0, columnspan=2, sticky="w", pady=(8, 14))
         buttons = ttk.Frame(frame)
-        buttons.grid(row=8, column=0, columnspan=2, sticky="e")
+        buttons.grid(row=7, column=0, columnspan=2, sticky="e", pady=(14, 0))
         ttk.Button(buttons, text="Cancelar", command=self.destroy).pack(side="right")
         ttk.Button(buttons, text="Continuar", command=self._continue).pack(
             side="right", padx=(0, 8)
@@ -104,23 +97,12 @@ class MediaPreparationDialog(tk.Toplevel):
     def _refresh_state(self) -> None:
         state = "readonly" if self.optimize_var.get() else "disabled"
         self.format_combo.configure(state=state)
-        self.delete_check.configure(state="normal" if self.optimize_var.get() else "disabled")
-        if not self.optimize_var.get():
-            self.delete_source_var.set(False)
 
     def _continue(self) -> None:
         optimize = self.optimize_var.get()
-        delete_source = optimize and self.delete_source_var.get()
-        if delete_source and not messagebox.askyesno(
-            "Confirmar eliminacion",
-            "La fuente original se eliminara permanentemente solo despues de verificar la copia.\n\n"
-            "Desea continuar?",
-            parent=self,
-        ):
-            return
         self.result = MediaPreparationChoice(
             optimize=optimize,
             output_format=self.format_var.get().casefold(),
-            delete_source=delete_source,
+            delete_source=False,
         )
         self.destroy()

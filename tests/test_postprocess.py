@@ -82,6 +82,43 @@ class PostprocessTests(unittest.TestCase):
         result = normalize_analysis(analysis, MeetingMetadata())
         self.assertEqual(result.items, [])
 
+    def test_discards_generic_information_but_keeps_material_project_status(self):
+        analysis = MinuteAnalysis(
+            items=[
+                MeetingItem(
+                    category="informativo",
+                    description="Se menciona que los talleres serán conversados.",
+                    confidence=0.9,
+                ),
+                MeetingItem(
+                    category="informativo",
+                    description="Se informa retraso en la aprobación del entregable de ingeniería.",
+                    confidence=0.9,
+                ),
+            ]
+        )
+        result = normalize_analysis(analysis, MeetingMetadata())
+        self.assertEqual(len(result.items), 1)
+        self.assertIn("retraso", result.items[0].description)
+
+    def test_reclassifies_unassigned_narrative_commitment_as_information(self):
+        analysis = MinuteAnalysis(
+            items=[
+                MeetingItem(
+                    category="compromiso",
+                    description="Se menciona que la finalización del desarrollo será el viernes.",
+                    due_date_text="viernes",
+                    confidence=0.95,
+                )
+            ]
+        )
+
+        result = normalize_analysis(analysis, MeetingMetadata())
+
+        self.assertEqual(result.items[0].category, "informativo")
+        self.assertIsNone(result.items[0].responsible)
+        self.assertTrue(any("reclasificado" in warning for warning in result.warnings))
+
 
 if __name__ == "__main__":
     unittest.main()
