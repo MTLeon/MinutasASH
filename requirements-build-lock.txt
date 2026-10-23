@@ -21,7 +21,7 @@ typing-extensions==4.16.0
 typing-inspection==0.4.4
 urllib3==2.7.0
 pypdf==6.16.1
-pillow==12.3.0
+pillow==13.0.0
 reportlab==4.5.1
 pytest==9.1.1
 msal==1.37.0
