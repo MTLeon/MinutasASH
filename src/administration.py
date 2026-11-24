@@ -13,8 +13,10 @@ from src.backup_service import create_backup, restore_backup, verify_backup
 from src.catalog_io import create_import_template, export_catalog, import_catalog
 from src.catalog_models import ClientRecord, ContactRecord, OrganizationRecord, ProjectCatalogRecord
 from src.database import AppDatabase
+from src.knowledge_distillation import export_distillation_record, prepare_distillation_preview
 from src.learning_dataset import export_lora_datasets
-from src.runtime_paths import backups_dir, exports_dir, resource_path, templates_dir
+from src.runtime_paths import backups_dir, exports_dir, references_dir, resource_path, templates_dir
+from src.standard_library import REFERENCE_TYPES, StandardLibraryService
 from src.template_service import TemplateService
 from src.ui_state import configure_resizable_window
 
@@ -160,6 +162,89 @@ class TemplateInstallDialog(tk.Toplevel):
         self.destroy()
 
 
+class ReferenceInstallDialog(tk.Toplevel):
+    def __init__(self, parent) -> None:
+        super().__init__(parent)
+        self.title("Agregar referencia")
+        configure_resizable_window(self, parent, "reference_install", "780x520", (620, 420))
+        self.result: dict | None = None
+        self.vars = {
+            "source": tk.StringVar(),
+            "title": tk.StringVar(),
+            "reference_type": tk.StringVar(value="format"),
+            "project_code": tk.StringVar(),
+            "client": tk.StringVar(),
+            "notes": tk.StringVar(),
+        }
+        frame = ttk.Frame(self, padding=16)
+        frame.pack(fill="both", expand=True)
+        fields = [
+            ("source", "Archivo"),
+            ("title", "Nombre visible"),
+            ("reference_type", "Tipo"),
+            ("project_code", "Código de proyecto"),
+            ("client", "Cliente"),
+            ("notes", "Nota de uso"),
+        ]
+        for row, (key, label) in enumerate(fields):
+            ttk.Label(frame, text=label).grid(row=row, column=0, sticky="w", pady=5, padx=(0, 10))
+            widget: ttk.Combobox | ttk.Entry
+            if key == "reference_type":
+                widget = ttk.Combobox(
+                    frame,
+                    textvariable=self.vars[key],
+                    values=list(REFERENCE_TYPES),
+                    state="readonly",
+                    width=50,
+                )
+            else:
+                holder = ttk.Frame(frame)
+                holder.columnconfigure(0, weight=1)
+                widget = ttk.Entry(holder, textvariable=self.vars[key], width=52)
+                widget.grid(row=0, column=0, sticky="ew")
+                if key == "source":
+                    ttk.Button(holder, text="Examinar...", command=self._browse).grid(
+                        row=0, column=1, padx=(6, 0)
+                    )
+                holder.grid(row=row, column=1, sticky="ew", pady=5)
+                continue
+            widget.grid(row=row, column=1, sticky="ew", pady=5)
+        frame.columnconfigure(1, weight=1)
+        ttk.Label(
+            frame,
+            text="Las referencias se copian a la biblioteca local y quedan disponibles para consulta. Una plantilla automática debe ser .docx con marcadores.",
+            style="Muted.TLabel",
+            wraplength=560,
+        ).grid(row=len(fields), column=0, columnspan=2, sticky="w", pady=(8, 0))
+        buttons = ttk.Frame(frame)
+        buttons.grid(row=len(fields) + 1, column=0, columnspan=2, sticky="e", pady=(14, 0))
+        ttk.Button(buttons, text="Cancelar", command=self.destroy).pack(side="left")
+        ttk.Button(buttons, text="Agregar", style="Primary.TButton", command=self._save).pack(
+            side="left", padx=(8, 0)
+        )
+        self.grab_set()
+
+    def _browse(self) -> None:
+        path = filedialog.askopenfilename(
+            parent=self,
+            filetypes=[("Referencias", "*.doc *.docx *.pdf *.pptx *.xlsx *.txt")],
+        )
+        if path:
+            self.vars["source"].set(path)
+            if not self.vars["title"].get().strip():
+                self.vars["title"].set(Path(path).stem)
+
+    def _save(self) -> None:
+        data = {key: variable.get().strip() for key, variable in self.vars.items()}
+        if not Path(data["source"]).is_file() or not data["title"]:
+            messagebox.showwarning(
+                "Biblioteca", "Seleccione un archivo y asigne un nombre.", parent=self
+            )
+            return
+        self.result = data
+        self.destroy()
+
+
 class AdministrationCenter(tk.Toplevel):
     def __init__(self, parent, database: AppDatabase, config: dict, refresh_callback=None) -> None:
         super().__init__(parent)
@@ -169,6 +254,7 @@ class AdministrationCenter(tk.Toplevel):
         self.app_config = config
         self.refresh_callback = refresh_callback
         self.template_service = TemplateService(database)
+        self.standard_library = StandardLibraryService(database)
         self.current_catalog = "contacts"
         self._build()
         self._refresh_all()
@@ -179,7 +265,7 @@ class AdministrationCenter(tk.Toplevel):
         ttk.Label(header, text="Administración", style="Title.TLabel").pack(side="left")
         ttk.Label(
             header,
-            text="Catálogos, plantillas, respaldos y auditoría",
+            text="Catálogos, plantillas, biblioteca, respaldos y auditoría",
             style="Muted.TLabel",
         ).pack(side="left", padx=14)
         ttk.Button(header, text="Cerrar", command=self.destroy).pack(side="right")
@@ -188,18 +274,21 @@ class AdministrationCenter(tk.Toplevel):
         self.notebook.pack(fill="both", expand=True, padx=14, pady=(0, 14))
         self.tab_catalogs = ttk.Frame(self.notebook, padding=12)
         self.tab_templates = ttk.Frame(self.notebook, padding=12)
+        self.tab_references = ttk.Frame(self.notebook, padding=12)
         self.tab_backup = ttk.Frame(self.notebook, padding=12)
         self.tab_audit = ttk.Frame(self.notebook, padding=12)
         self.tab_learning = ttk.Frame(self.notebook, padding=12)
         self.tab_repository = ttk.Frame(self.notebook, padding=12)
         self.notebook.add(self.tab_catalogs, text="Catálogos")
         self.notebook.add(self.tab_templates, text="Plantillas")
+        self.notebook.add(self.tab_references, text="Biblioteca")
         self.notebook.add(self.tab_backup, text="Respaldo")
         self.notebook.add(self.tab_audit, text="Auditoría")
         self.notebook.add(self.tab_learning, text="Aprendizaje")
         self.notebook.add(self.tab_repository, text="Repositorio")
         self._build_catalogs()
         self._build_templates()
+        self._build_references()
         self._build_backup()
         self._build_audit()
         self._build_learning()
@@ -771,6 +860,95 @@ class AdministrationCenter(tk.Toplevel):
             self._refresh_templates()
 
     # ------------------------------------------------------------------
+    # Biblioteca de estándares
+    # ------------------------------------------------------------------
+    def _build_references(self) -> None:
+        tab = self.tab_references
+        tab.columnconfigure(0, weight=1)
+        tab.rowconfigure(1, weight=1)
+        controls = ttk.Frame(tab)
+        controls.grid(row=0, column=0, sticky="ew", pady=(0, 8))
+        ttk.Button(controls, text="Agregar referencia", command=self._install_reference).pack(
+            side="left"
+        )
+        ttk.Button(controls, text="Abrir", command=self._open_reference).pack(side="left", padx=4)
+        ttk.Button(controls, text="Activar / desactivar", command=self._toggle_reference).pack(
+            side="left", padx=4
+        )
+        ttk.Button(
+            controls, text="Abrir biblioteca", command=lambda: self._open_path(references_dir())
+        ).pack(side="right")
+        columns = ("id", "name", "type", "scope", "file", "active")
+        self.reference_tree = ttk.Treeview(tab, columns=columns, show="headings")
+        for key, label, width in (
+            ("id", "ID", 50),
+            ("name", "Referencia", 260),
+            ("type", "Tipo", 180),
+            ("scope", "Proyecto", 120),
+            ("file", "Archivo", 280),
+            ("active", "Activa", 70),
+        ):
+            self.reference_tree.heading(key, text=label)
+            self.reference_tree.column(key, width=width, anchor="w")
+        self.reference_tree.grid(row=1, column=0, sticky="nsew")
+        ttk.Label(
+            tab,
+            text="Guarde formatos, agendas, guías y ejemplos. Las plantillas automáticas se administran en la pestaña Plantillas.",
+            style="Muted.TLabel",
+        ).grid(row=2, column=0, sticky="w", pady=(8, 0))
+
+    def _refresh_references(self) -> None:
+        if not hasattr(self, "reference_tree"):
+            return
+        self.reference_tree.delete(*self.reference_tree.get_children())
+        for row in self.database.list_standard_references():
+            self.reference_tree.insert(
+                "",
+                "end",
+                iid=str(row["id"]),
+                values=(
+                    row["id"],
+                    row["title"],
+                    REFERENCE_TYPES.get(row["reference_type"], row["reference_type"]),
+                    row.get("project_code") or "General",
+                    row["file_name"],
+                    "Sí" if row["active"] else "No",
+                ),
+            )
+
+    def _selected_reference(self) -> dict | None:
+        selection = self.reference_tree.selection()
+        return self.database.get_standard_reference(int(selection[0])) if selection else None
+
+    def _install_reference(self) -> None:
+        dialog = ReferenceInstallDialog(self)
+        self.wait_window(dialog)
+        if not dialog.result:
+            return
+        try:
+            data = dict(dialog.result)
+            reference_id = self.standard_library.install(data.pop("source"), **data)
+            self._refresh_references()
+            self.reference_tree.selection_set(str(reference_id))
+        except Exception as exc:
+            messagebox.showerror("Biblioteca", str(exc), parent=self)
+
+    def _open_reference(self) -> None:
+        reference = self._selected_reference()
+        if not reference:
+            messagebox.showinfo("Biblioteca", "Seleccione una referencia.", parent=self)
+            return
+        self._open_path(Path(reference["file_path"]))
+
+    def _toggle_reference(self) -> None:
+        reference = self._selected_reference()
+        if not reference:
+            messagebox.showinfo("Biblioteca", "Seleccione una referencia.", parent=self)
+            return
+        self.database.set_standard_reference_active(reference["id"], not bool(reference["active"]))
+        self._refresh_references()
+
+    # ------------------------------------------------------------------
     # Respaldo y auditoría
     # ------------------------------------------------------------------
     def _build_backup(self) -> None:
@@ -937,6 +1115,11 @@ class AdministrationCenter(tk.Toplevel):
         ttk.Button(
             actions, text="Exportar dataset LoRA", command=self._export_learning_dataset
         ).pack(side="left")
+        ttk.Button(
+            actions,
+            text="Preparar ejemplo oro",
+            command=self._prepare_distillation_example,
+        ).pack(side="left", padx=6)
         ttk.Label(
             actions,
             text="Las correcciones aprobadas se almacenan localmente; no modifican automáticamente el modelo.",
@@ -1055,6 +1238,80 @@ class AdministrationCenter(tk.Toplevel):
         except Exception as exc:
             messagebox.showerror("Dataset LoRA", str(exc), parent=self)
 
+    def _prepare_distillation_example(self) -> None:
+        transcript = filedialog.askopenfilename(
+            parent=self,
+            title="Transcripción de la reunión",
+            filetypes=[("Transcripciones", "*.txt *.vtt *.srt *.docx *.pdf"), ("Todos", "*.*")],
+        )
+        if not transcript:
+            return
+        reference = filedialog.askopenfilename(
+            parent=self,
+            title="Minuta final validada",
+            filetypes=[("Minuta final", "*.docx *.pdf"), ("Todos", "*.*")],
+        )
+        if not reference:
+            return
+        project = simpledialog.askstring(
+            "Ejemplo oro", "Proyecto al que pertenece el ejemplo:", parent=self
+        )
+        client = simpledialog.askstring(
+            "Ejemplo oro", "Cliente al que pertenece el ejemplo:", parent=self
+        )
+        if not project or not client:
+            messagebox.showinfo(
+                "Ejemplo oro",
+                "Proyecto y cliente son necesarios para aislar el conocimiento.",
+                parent=self,
+            )
+            return
+        try:
+            preview = prepare_distillation_preview(transcript, reference)
+        except Exception as exc:
+            messagebox.showerror(
+                "Ejemplo oro", f"No se pudo leer el par de referencia:\n{exc}", parent=self
+            )
+            return
+        if not preview.extracted_items:
+            messagebox.showwarning(
+                "Ejemplo oro",
+                "No se identificaron puntos de la matriz de la minuta. No se exportó nada.",
+                parent=self,
+            )
+            return
+        detail = (
+            f"Transcripción: {preview.transcript_characters:,} caracteres\n"
+            f"Puntos extraídos: {len(preview.extracted_items)}\n\n"
+            "Se preparará un JSONL local para revisión y entrenamiento posterior. "
+            "No se enviará información ni se modificará el modelo automáticamente."
+        )
+        if preview.warnings:
+            detail += "\n\nAdvertencias:\n" + "\n".join(preview.warnings)
+        if not messagebox.askyesno("Revisar ejemplo oro", detail + "\n\n¿Exportar?", parent=self):
+            return
+        destination = filedialog.asksaveasfilename(
+            parent=self,
+            title="Guardar ejemplo de destilación",
+            initialdir=exports_dir(),
+            initialfile=f"distillation-{project.strip().upper()}.jsonl",
+            defaultextension=".jsonl",
+            filetypes=[("JSON Lines", "*.jsonl")],
+        )
+        if not destination:
+            return
+        try:
+            output = export_distillation_record(
+                preview, destination, project_code=project.strip().upper(), client=client.strip()
+            )
+            messagebox.showinfo(
+                "Ejemplo oro",
+                f"Ejemplo preparado en:\n{output}\n\nRevíselo y acumule varios ejemplos antes de ejecutar un ajuste LoRA.",
+                parent=self,
+            )
+        except Exception as exc:
+            messagebox.showerror("Ejemplo oro", str(exc), parent=self)
+
     def _refresh_learning(self) -> None:
         if not hasattr(self, "learning_terms_tree"):
             return
@@ -1111,6 +1368,7 @@ class AdministrationCenter(tk.Toplevel):
     def _refresh_all(self) -> None:
         self._refresh_catalog()
         self._refresh_templates()
+        self._refresh_references()
         self._refresh_audit()
         self._refresh_learning()
 

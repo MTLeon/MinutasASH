@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from src.documents.anglo_minutes import AngloMinutesDocument
 from src.documents.base import DocumentProvider
 from src.documents.managed_template import ManagedTemplateDocument
 from src.documents.minutes_ash import AshMinutesDocument
 
 _PROVIDERS: dict[str, DocumentProvider] = {
+    AngloMinutesDocument.provider_id: AngloMinutesDocument(),
     AshMinutesDocument.provider_id: AshMinutesDocument(),
     ManagedTemplateDocument.provider_id: ManagedTemplateDocument(),
 }

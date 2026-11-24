@@ -14,14 +14,14 @@ class ReleaseIdentityTests(unittest.TestCase):
         major, minor, patch = (int(part) for part in version.split("."))
         self.assertEqual(APP_VERSION, version)
         self.assertEqual(RELEASE_SEQUENCE, major * 1_000_000 + minor * 1_000 + patch)
-        self.assertEqual(DATABASE_SCHEMA_VERSION, 8)
+        self.assertEqual(DATABASE_SCHEMA_VERSION, 9)
 
     def test_windows_resources_and_installer_match_release(self):
         version_info = (ROOT / "assets" / "version_info.txt").read_text(encoding="utf-8")
         installer = (ROOT / "installer" / "MinutasASH.iss").read_text(encoding="utf-8")
-        self.assertIn("filevers=(2, 3, 8, 0)", version_info)
-        self.assertIn("prodvers=(2, 3, 8, 0)", version_info)
-        self.assertIn("FileVersion', '2.3.8'", version_info)
+        self.assertIn("filevers=(2, 3, 18, 0)", version_info)
+        self.assertIn("prodvers=(2, 3, 18, 0)", version_info)
+        self.assertIn("FileVersion', '2.3.18'", version_info)
         self.assertIn("#ifndef MyAppVersion", installer)
         self.assertIn("VERSION.txt", installer)
         self.assertIn("MinutasASH_Setup_{#MyAppVersion}_Online", installer)

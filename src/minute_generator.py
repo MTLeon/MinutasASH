@@ -15,7 +15,8 @@ Reglas obligatorias:
 1. Usa exclusivamente información explícita de la transcripción.
 2. No inventes proyectos, clientes, fechas, responsables, asistentes ni acuerdos.
 3. Diferencia estas categorías:
-   - informativo: antecedente, presentación, consulta o estado comunicado;
+   - informativo: solo un antecedente, estado, riesgo o definición que afecte
+     materialmente al proyecto o requiera seguimiento;
    - acuerdo: decisión explícita sin una acción individual claramente asignada;
    - compromiso: cualquier acción futura explícita que realizará una persona,
      empresa, área o el cliente. Expresiones como "enviará", "revisará",
@@ -30,7 +31,8 @@ Reglas obligatorias:
 7. No uses "Informativo" como responsable dentro del JSON; el documento Word
    lo completará automáticamente según la categoría.
 8. Toda fila debe corresponder a un punto relevante para el proyecto. Omite
-   saludos, pruebas de audio, muletillas y conversación social.
+   saludos, pruebas de audio, muletillas, conversación social, confirmaciones
+   breves y repeticiones. No crees una fila por cada intervención.
 9. Conserva una marca temporal real como evidencia.
 10. Una próxima reunión debe registrarse como informativo o en next_meeting;
     nunca como compromiso operativo.
@@ -54,6 +56,9 @@ Reglas obligatorias:
 19. Los ejemplos aprobados son referencias de clasificación y estilo; nunca
     copies sus personas, proyectos, fechas, acciones ni conclusiones como hechos.
 20. Responde exclusivamente con el JSON exigido por el esquema.
+21. No clasifiques como compromiso una frase narrativa como "se menciona que la
+    actividad terminará el viernes" si no existe un ejecutor o una acción futura
+    asignada. Es un informativo de plazo o estado, aunque contenga una fecha.
 """
 
 
@@ -95,7 +100,8 @@ DATOS CONOCIDOS:
 {_metadata_context(metadata)}
 
 INSTRUCCIONES:
-- Genera una fila independiente por cada punto sustantivo.
+- Genera filas solo para decisiones, compromisos, pendientes o antecedentes que
+  afecten alcance, plazo, costo, riesgo, calidad, seguridad o coordinación.
 - En reuniones multiproyecto, asigna project_code a cada fila usando el contexto más cercano.
 - Mantén antecedentes informativos relevantes, acuerdos, compromisos y pendientes.
 - Elimina saludos, pruebas de audio, muletillas y conversación social.
@@ -139,9 +145,10 @@ Contexto corporativo aprobado (referencia de vocabulario y patrones; no aporta h
 Si una fecha relativa no puede convertirse sin ambigüedad, conserva el texto
 en due_date_text y deja due_date_iso en null.
 
-Crea una fila independiente por cada punto sustantivo. En reuniones internas
-también deben conservarse antecedentes informativos relevantes, como estados
-de avance, consultas, riesgos, incidentes, presentaciones y definiciones.
+Crea filas solo para decisiones, compromisos, pendientes o antecedentes con
+impacto material en el proyecto. No conviertas "se menciona", "se comenta",
+confirmaciones, saludos o reiteraciones en filas. Conserva un antecedente solo
+si cambia el estado, riesgo, plazo, alcance, calidad, seguridad o coordinación.
 
 TRANSCRIPCIÓN:
 {chunk}

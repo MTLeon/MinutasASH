@@ -88,10 +88,10 @@ PROFILE_PRESETS: dict[str, ProcessingProfile] = {
     "fast": ProcessingProfile(
         profile_id="fast",
         display_name="Rápido",
-        chunk_chars=5200,
-        single_pass_chars=6200,
+        chunk_chars=4200,
+        single_pass_chars=5000,
         context_length=4096,
-        timeout_seconds=1500,
+        timeout_seconds=720,
         min_chunk_chars=1800,
         max_retries=3,
         consolidation_batch_chars=8000,
@@ -103,7 +103,7 @@ PROFILE_PRESETS: dict[str, ProcessingProfile] = {
         chunk_chars=8500,
         single_pass_chars=10000,
         context_length=8192,
-        timeout_seconds=2100,
+        timeout_seconds=1200,
         min_chunk_chars=2200,
         max_retries=3,
         consolidation_batch_chars=12000,
@@ -115,7 +115,7 @@ PROFILE_PRESETS: dict[str, ProcessingProfile] = {
         chunk_chars=11500,
         single_pass_chars=13500,
         context_length=12288,
-        timeout_seconds=3000,
+        timeout_seconds=1800,
         min_chunk_chars=2600,
         max_retries=3,
         consolidation_batch_chars=16000,
@@ -258,8 +258,9 @@ def resolve_processing_plan(
         percent = snapshot.memory_percent
         available = snapshot.available_memory_bytes
         total = snapshot.total_memory_bytes
+        warning_threshold = float(config.get("memory_warning_percent", 88.0))
         if (
-            (percent is not None and percent >= 90.0)
+            (percent is not None and percent >= warning_threshold)
             or (available is not None and available < 2 * GIB)
             or (total is not None and total < 10 * GIB)
         ):
@@ -340,41 +341,45 @@ def split_text_chunk(
     *,
     overlap_lines: int = 2,
 ) -> list[str]:
-    """Divide un bloque por líneas completas y conserva un pequeño solapamiento."""
+    """Divide un bloque garantizando que cada hijo haga progreso real.
 
-    target_chars = max(int(target_chars), 1000)
+    Las líneas normales se preservan completas y pueden conservar contexto con
+    ``overlap_lines``. Una línea mayor que el objetivo se parte por caracteres
+    sin solapamiento: así la recuperación de un timeout nunca vuelve a enviar
+    exactamente el mismo bloque al motor local.
+    """
+
+    target_chars = max(int(target_chars), 1)
     lines = [line for line in text.splitlines() if line.strip()]
     if not lines or len(text) <= target_chars:
         return [text]
 
+    expanded_lines: list[str] = []
+    for line in lines:
+        if len(line) <= target_chars:
+            expanded_lines.append(line)
+            continue
+        # No se solapan caracteres dentro de una línea gigante. El límite de
+        # caracteres da una cota estricta y cada fragmento avanza el cursor.
+        expanded_lines.extend(
+            line[cursor : cursor + target_chars] for cursor in range(0, len(line), target_chars)
+        )
+
     chunks: list[str] = []
     current: list[str] = []
-    current_size = 0
-    for line in lines:
-        extra = len(line) + 1
-        if current and current_size + extra > target_chars:
+    for line in expanded_lines:
+        candidate = "\n".join([*current, line])
+        if current and len(candidate) > target_chars:
             chunks.append("\n".join(current))
             overlap = current[-overlap_lines:] if overlap_lines else []
             current = list(overlap)
-            current_size = sum(len(item) + 1 for item in current)
+            # El solapamiento sólo se conserva si deja espacio al contenido
+            # nuevo; de otro modo podría crear hijos mayores que su padre.
+            while current and len("\n".join([*current, line])) > target_chars:
+                current.pop(0)
         current.append(line)
-        current_size += extra
     if current:
         chunks.append("\n".join(current))
-
-    # Un bloque gigantesco sin saltos de línea se divide de forma segura por
-    # caracteres; esta rama solo se usa con entradas manuales atípicas.
-    if len(chunks) == 1 and len(chunks[0]) > target_chars * 1.5:
-        raw = chunks[0]
-        chunks = []
-        cursor = 0
-        overlap_chars = min(500, target_chars // 10)
-        while cursor < len(raw):
-            end = min(cursor + target_chars, len(raw))
-            chunks.append(raw[cursor:end])
-            if end >= len(raw):
-                break
-            cursor = max(end - overlap_chars, cursor + 1)
     return chunks
 
 

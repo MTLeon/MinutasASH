@@ -69,6 +69,7 @@ class OllamaStreaming232Tests(unittest.TestCase):
         self.assertTrue(any(event.get("type") == "stream_activity" for event in events))
         finished = [event for event in events if event.get("type") == "request_finished"]
         self.assertEqual(finished[0].get("eval_count"), 5)
+        self.assertEqual(finished[0].get("generation_tokens_per_second"), 5_000_000.0)
         self.assertEqual(finished[0].get("stage"), "unit")
 
     def test_invalid_schema_is_retried_with_a_new_stream(self) -> None:
@@ -83,6 +84,19 @@ class OllamaStreaming232Tests(unittest.TestCase):
         self.assertEqual(result.value, "fixed")
         self.assertEqual(len(session.requests), 2)
         self.assertTrue(any(event.get("type") == "schema_validation_failed" for event in events))
+
+    def test_malformed_json_is_retried_with_a_new_stream(self) -> None:
+        first = FakeResponse(
+            [{"message": {"content": '{"value": "broken",\nnota: true}'}, "done": True}]
+        )
+        second = FakeResponse([{"message": {"content": '{"value": "fixed"}'}, "done": True}])
+        session = FakeSession([first, second])
+        client = OllamaClient("http://127.0.0.1:11434", "fake", timeout_seconds=60)
+        client.configure_runtime(cancelled=lambda: False)
+        with patch("src.ollama_client.requests.Session", return_value=session):
+            result = client.structured_chat("system", "user", SampleOutput)
+        self.assertEqual(result.value, "fixed")
+        self.assertEqual(len(session.requests), 2)
 
 
 if __name__ == "__main__":

@@ -24,7 +24,7 @@ from src.minute_generator import (
     analyze_complete_transcript,
 )
 from src.models import MeetingMetadata, MinuteAnalysis
-from src.ollama_client import LocalEngineTimeout, StructuredOutputTruncated
+from src.ollama_client import LocalEngineTimeout, StructuredOutputError, StructuredOutputTruncated
 from src.pdf_writer import generate_minute_pdf
 from src.postprocess import normalize_analysis
 from src.processing_runtime import (
@@ -117,8 +117,8 @@ def _emit(telemetry: TelemetryCallback, event_type: str, **payload: Any) -> None
 def _candidate_batches(
     candidates: list[ActionCandidate],
     *,
-    max_chars: int = 7000,
-    max_items: int = 40,
+    max_chars: int = 2200,
+    max_items: int = 8,
 ) -> list[list[ActionCandidate]]:
     batches: list[list[ActionCandidate]] = []
     current: list[ActionCandidate] = []
@@ -134,6 +134,80 @@ def _candidate_batches(
     if current:
         batches.append(current)
     return batches
+
+
+def _structured_issue_label(error: StructuredOutputError) -> str:
+    return "incompleta" if isinstance(error, StructuredOutputTruncated) else "inválida"
+
+
+def _recover_coverage_batch(
+    client: Any,
+    batch: list[ActionCandidate],
+    metadata: MeetingMetadata,
+    knowledge_context: str,
+    profile: Any,
+    config: dict[str, Any],
+    *,
+    batch_label: str,
+    total_batches: int,
+    log: LogCallback,
+    cancelled: CancelCallback,
+) -> list[MinuteAnalysis]:
+    """Recupera una tanda y la divide si su JSON estructurado queda incompleto."""
+
+    if cancelled():
+        raise InterruptedError("Proceso cancelado por el usuario.")
+    candidates_text = format_candidates_for_prompt(batch)
+    timeout = adaptive_timeout_seconds(
+        profile,
+        len(candidates_text),
+        config,
+        snapshot=get_resource_snapshot(),
+    )
+    _configure_request(
+        client,
+        timeout_seconds=timeout,
+        context_length=profile.context_length,
+        operation={
+            "stage": "coverage_recovery",
+            "group_index": batch_label,
+            "total_groups": total_batches,
+        },
+    )
+    try:
+        return [
+            analyze_candidate_recovery(
+                client,
+                candidates_text,
+                metadata.model_dump(),
+                knowledge_context=knowledge_context,
+            )
+        ]
+    except StructuredOutputError as exc:
+        if len(batch) < 2:
+            raise
+        split_at = max(1, len(batch) // 2)
+        log(
+            f"La comprobación focalizada {batch_label}/{total_batches} recibió una respuesta "
+            f"{_structured_issue_label(exc)}; se dividirá en grupos más pequeños."
+        )
+        recovered: list[MinuteAnalysis] = []
+        for suffix, child in (("a", batch[:split_at]), ("b", batch[split_at:])):
+            recovered.extend(
+                _recover_coverage_batch(
+                    client,
+                    child,
+                    metadata,
+                    knowledge_context,
+                    profile,
+                    config,
+                    batch_label=f"{batch_label}{suffix}",
+                    total_batches=total_batches,
+                    log=log,
+                    cancelled=cancelled,
+                )
+            )
+        return recovered
 
 
 def analyze_meeting(
@@ -329,7 +403,7 @@ def analyze_meeting(
         log(f"Bloques iniciales de procesamiento: {len(chunks)}")
         progress(24, f"Preparando {len(chunks)} bloque(s) recuperables")
         client_factory = None
-        if descriptor.is_remote and int(config.get("remote_parallel_requests", 2)) > 1:
+        if descriptor.is_remote and int(config.get("remote_parallel_requests", 6)) > 1:
             factory_provider_id = provider_id
             factory_model = str(getattr(client, "model", selected_model))
 
@@ -369,8 +443,23 @@ def analyze_meeting(
     should_recover = bool(candidates) and (
         not analysis.items or initial_report.ratio < minimum_coverage
     )
+    fast_local_coverage = (
+        profile.profile_id == "fast"
+        and not descriptor.is_remote
+        and len(transcript_text) > profile.single_pass_chars
+        and bool(config.get("semantic_guard_fast_local_fallback", True))
+    )
 
-    if guard_enabled and should_recover and bool(config.get("semantic_guard_second_pass", True)):
+    if guard_enabled and should_recover and fast_local_coverage:
+        # El respaldo determinista que sigue conserva las expresiones inequívocas.
+        # Evitar una segunda vuelta LLM aquí impide que una reunión extensa quede
+        # bloqueada por respuestas de recuperación excesivamente grandes.
+        log(
+            "Perfil rápido: el control de cobertura aplicará recuperación local "
+            "para evitar una segunda revisión lenta del motor."
+        )
+        pipeline_diagnostics["coverage_llm_skipped_for_speed"] = True
+    elif guard_enabled and should_recover and bool(config.get("semantic_guard_second_pass", True)):
         if cancelled():
             raise InterruptedError("Proceso cancelado por el usuario.")
         recovery_attempted = True
@@ -384,36 +473,26 @@ def analyze_meeting(
         for batch_index, batch in enumerate(batches, start=1):
             if cancelled():
                 raise InterruptedError("Proceso cancelado por el usuario.")
-            candidates_text = format_candidates_for_prompt(batch)
-            recovery_timeout = adaptive_timeout_seconds(
-                profile,
-                len(candidates_text),
-                config,
-                snapshot=get_resource_snapshot(),
-            )
-            _configure_request(
-                client,
-                timeout_seconds=recovery_timeout,
-                context_length=profile.context_length,
-                operation={
-                    "stage": "coverage_recovery",
-                    "group_index": batch_index,
-                    "total_groups": len(batches),
-                },
-            )
             progress(
                 84 + min(6, int(6 * batch_index / max(len(batches), 1))),
                 f"Verificando omisiones {batch_index} de {len(batches)}",
             )
             try:
-                recovery = analyze_candidate_recovery(
+                recovered_analyses = _recover_coverage_batch(
                     client,
-                    candidates_text,
-                    metadata.model_dump(),
-                    knowledge_context=knowledge_context,
+                    batch,
+                    metadata,
+                    knowledge_context,
+                    profile,
+                    config,
+                    batch_label=str(batch_index),
+                    total_batches=len(batches),
+                    log=log,
+                    cancelled=cancelled,
                 )
-                analysis = merge_analyses(analysis, recovery)
-                analysis = normalize_analysis(analysis, metadata)
+                for recovery in recovered_analyses:
+                    analysis = merge_analyses(analysis, recovery)
+                    analysis = normalize_analysis(analysis, metadata)
             except Exception as exc:
                 # La recuperación es una protección adicional. Su fallo no debe
                 # perder el análisis principal ni los otros grupos.
@@ -437,6 +516,9 @@ def analyze_meeting(
             after_recovery.uncovered,
             metadata,
             minimum_confidence=float(config.get("semantic_guard_fallback_min_confidence", 0.82)),
+            include_informative=bool(
+                config.get("semantic_guard_include_informative_candidates", False)
+            ),
         )
         analysis = normalize_analysis(analysis, metadata)
         if fallback_added:

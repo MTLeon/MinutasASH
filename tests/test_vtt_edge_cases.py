@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from src.vtt_reader import read_teams_vtt, split_transcript
+from src.vtt_reader import TranscriptSegment, read_teams_vtt, split_transcript
 
 
 class VttEdgeCaseTests(unittest.TestCase):
@@ -41,6 +41,18 @@ Texto sin etiqueta de hablante.
         joined = "\n".join(chunks)
         self.assertIn("Primera intervención", joined)
         self.assertIn("Tercera intervención", joined)
+
+    def test_split_divides_giant_intervention_without_losing_text(self):
+        content = "x" * 8_000
+        chunks = split_transcript(
+            [TranscriptSegment("00:00:01.000", "00:00:30.000", "A", content)],
+            max_chars=2_000,
+            overlap_segments=2,
+        )
+
+        self.assertGreater(len(chunks), 1)
+        self.assertTrue(all(len(chunk) <= 2_000 for chunk in chunks))
+        self.assertEqual(sum(chunk.count("x") for chunk in chunks), len(content))
 
 
 if __name__ == "__main__":

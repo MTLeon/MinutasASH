@@ -14,13 +14,13 @@ from src.settings import AppSettings, load_settings
 class SettingsTests(unittest.TestCase):
     def test_defaults_are_valid(self):
         settings = AppSettings()
-        self.assertEqual(settings.app_version, "2.3.8")
-        self.assertEqual(settings.release_sequence, 2003008)
+        self.assertEqual(settings.app_version, "2.3.18")
+        self.assertEqual(settings.release_sequence, 2003018)
         self.assertEqual(settings.schema_version, 6)
         self.assertEqual(settings.runtime_mode, "auto")
         self.assertTrue(settings.managed_runtime_url.startswith("https://"))
         self.assertEqual(settings.processing_provider, "ollama_local")
-        self.assertEqual(settings.remote_parallel_requests, 2)
+        self.assertEqual(settings.remote_parallel_requests, 6)
         self.assertEqual(settings.remote_rate_limit_retries, 3)
         self.assertEqual(settings.appearance_theme, "system")
         self.assertEqual(
@@ -65,9 +65,9 @@ class SettingsTests(unittest.TestCase):
                 patch("src.settings.resource_path", return_value=root / "config.json"),
             ):
                 settings = load_settings()
-        self.assertEqual(settings.app_version, "2.3.8")
+        self.assertEqual(settings.app_version, "2.3.18")
         self.assertEqual(settings.schema_version, 6)
-        self.assertEqual(settings.release_sequence, 2003008)
+        self.assertEqual(settings.release_sequence, 2003018)
         self.assertEqual(settings.appearance_theme, "dark")
 
 

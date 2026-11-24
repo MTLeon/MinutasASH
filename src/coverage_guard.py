@@ -106,6 +106,16 @@ _EXPLICIT_COMMITMENT_RE = re.compile(
     r"tenemos\s+que|hay\s+que|se\s+debe|deber[ií]amos|debi[eé]ramos)\b",
     re.I,
 )
+_IMPERSONAL_COMMITMENT_RE = re.compile(
+    r"\b(?:hay\s+que|tenemos\s+que|se\s+debe|deber[ií]amos)\b",
+    re.I,
+)
+_CONDITIONAL_ACTION_RE = re.compile(r"^\s*si\b.+\b(?:hay|tenemos)\s+que\b", re.I)
+_EXPLICIT_COMMITMENT_SUBJECT_RE = re.compile(
+    r"^\s*(?P<subject>ASH|AAS|el\s+cliente|la\s+contraparte|"
+    r"[A-ZÁÉÍÓÚÑ][\wÁÉÍÓÚÑáéíóúñ.-]+(?:\s+"
+    r"[A-ZÁÉÍÓÚÑ][\wÁÉÍÓÚÑáéíóúñ.-]+){0,3})\b",
+)
 _PLANNED_ACTION_RE = re.compile(
     r"\b(?:se\s+va\s+a|se\s+van\s+a|va\s+a|van\s+a|vamos\s+a|"
     r"a\s+partir\s+de\s+la\s+(?:pr[oó]xima|otra)\s+semana\s+vamos\s+a)\b",
@@ -275,10 +285,18 @@ def _split_clauses(value: str) -> list[str]:
     # compromiso ya asignado.
     clauses: list[str] = []
     for clause in raw_clauses:
+        continuation = re.match(
+            r"^(?:entonces\s+)?(?:tenemos\s+que|tengo\s+que|hay\s+que|se\s+debe)\b",
+            clause,
+            re.I,
+        )
         if (
             clauses
-            and re.search(r"\b(?:confirm|defin|indic).{0,80}\bsi\b", clauses[-1], re.I)
-            and re.match(r"^(?:tenemos\s+que|tengo\s+que|hay\s+que|se\s+debe)\b", clause, re.I)
+            and continuation
+            and (
+                re.search(r"\b(?:confirm|defin|indic).{0,80}\bsi\b", clauses[-1], re.I)
+                or re.match(r"^si\b", clauses[-1], re.I)
+            )
         ):
             clauses[-1] = f"{clauses[-1]} {clause}"
         else:
@@ -322,6 +340,27 @@ def _classify_clause(clause: str) -> tuple[str, str, float] | None:
     if _FUTURE_VERB_RE.search(clause) or _FUTURE_VERB_ASCII_RE.search(_normalize(clause)):
         return "compromiso", "verbo de acción futura", 0.93
     return None
+
+
+def _has_explicit_commitment_owner(clause: str) -> bool:
+    """Evita convertir obligaciones impersonales en compromisos asignados."""
+
+    if _FIRST_PERSON_RE.search(clause):
+        return True
+    match = _EXPLICIT_COMMITMENT_SUBJECT_RE.match(clause)
+    if not match:
+        return False
+    return _normalize(match.group("subject")) not in {
+        "el",
+        "la",
+        "los",
+        "las",
+        "hay",
+        "tenemos",
+        "se",
+        "si",
+        "deberiamos",
+    }
 
 
 def _project_code_from_text(text: str) -> str | None:
@@ -382,6 +421,19 @@ def extract_action_candidates(
             if not classification:
                 continue
             category, reason, confidence = classification
+            if (
+                category == "compromiso"
+                and _IMPERSONAL_COMMITMENT_RE.search(clause)
+                and not _has_explicit_commitment_owner(clause)
+            ):
+                # Una obligación condicionada sí puede ser relevante para la
+                # revisión, pero no debe aparecer como compromiso asignado.
+                if _CONDITIONAL_ACTION_RE.search(clause):
+                    category = "pendiente"
+                    reason = "acción condicional sin responsable explícito"
+                    confidence = 0.65
+                else:
+                    continue
             position = normalized_group.find(normalized_clause, search_cursor)
             if position < 0:
                 position = search_cursor
@@ -677,6 +729,7 @@ def apply_deterministic_fallback(
     uncovered: list[ActionCandidate] | tuple[ActionCandidate, ...],
     metadata: MeetingMetadata,
     minimum_confidence: float = 0.82,
+    include_informative: bool = False,
 ) -> tuple[MinuteAnalysis, int]:
     """Añade solo expresiones explícitas de alta confianza que quedaron omitidas.
 
@@ -687,6 +740,15 @@ def apply_deterministic_fallback(
 
     added = 0
     for candidate in uncovered:
+        # La cobertura automática protege decisiones y trabajo pendiente. Un
+        # antecedente conversacional no debe transformarse por sí solo en una
+        # fila que sature la revisión humana.
+        if (
+            candidate.category_hint == "informativo"
+            and not _NEXT_MEETING_RE.search(candidate.text)
+            and not include_informative
+        ):
+            continue
         if candidate.confidence < minimum_confidence:
             continue
         analysis.items.append(_candidate_to_item(candidate, metadata))

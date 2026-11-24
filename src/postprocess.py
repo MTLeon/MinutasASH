@@ -38,6 +38,23 @@ _TENTATIVE_DISMISSAL_RE = re.compile(
     r"\b(?:algun dia|mas adelante|no (?:se )?(?:decidio|acordo|aprobo)"
     r"|no se tomo ninguna decision)\b"
 )
+_GENERIC_INFORMATION_RE = re.compile(
+    r"^(?:se\s+)?(?:menciona|comenta|indica|senala|conversa|revisa)\b"
+)
+_MATERIAL_INFORMATION_RE = re.compile(
+    r"\b(?:atras|retras|plazo|fecha|riesgo|seguridad|hse|calidad|alcance|"
+    r"costo|presupuesto|aprobaci|rechaz|bloque|incidente|desviaci|pendiente|"
+    r"entregable|rfi|cambio|coordinaci|programaci|ingenier|avance|estado|finaliz)\b"
+)
+_COMMITMENT_ACTION_RE = re.compile(
+    r"\b(?:se\s+acuerda|queda\s+(?:a\s+cargo|asignad)|se\s+compromet|"
+    r"(?:enviar|entregar|emitir|revisar|coordinar|gestionar|realizar|preparar|"
+    r"actualizar|validar|responder|cerrar|informar|comunicar)(?:a|an|ara|aran|are|aremos|emos)|"
+    r"(?:voy|vamos|tengo|tenemos)\s+que)\b"
+)
+_AMBIGUOUS_RESPONSIBLE_RE = re.compile(
+    r"^(?:hablante\s+no\s+identificado|por\s+confirmar|informativo|n/?a)$"
+)
 
 
 def _norm(value: str | None) -> str:
@@ -64,6 +81,27 @@ def _is_explicitly_non_actionable(item: MeetingItem) -> bool:
         _EXPLICIT_REJECTION_RE.search(text)
         or (_TENTATIVE_RE.search(text) and _TENTATIVE_DISMISSAL_RE.search(text))
     )
+
+
+def _is_low_value_information(item: MeetingItem) -> bool:
+    """Evita filas narrativas que no aportan una decisión o estado material."""
+
+    if item.category != "informativo":
+        return False
+    text = _norm(" ".join(part for part in (item.title, item.description) if part))
+    return bool(_GENERIC_INFORMATION_RE.search(text) and not _MATERIAL_INFORMATION_RE.search(text))
+
+
+def _is_narrative_commitment(item: MeetingItem) -> bool:
+    """Identifica estados futuros sin una acción ni ejecutor asignados."""
+
+    if item.category != "compromiso":
+        return False
+    text = _norm(" ".join(part for part in (item.title, item.description) if part))
+    if not _GENERIC_INFORMATION_RE.search(text) or _COMMITMENT_ACTION_RE.search(text):
+        return False
+    responsible = _norm(item.responsible)
+    return not responsible or bool(_AMBIGUOUS_RESPONSIBLE_RE.fullmatch(responsible))
 
 
 def _resolve_responsible(value: str | None, metadata: MeetingMetadata) -> str | None:
@@ -122,6 +160,15 @@ def normalize_analysis(analysis: MinuteAnalysis, metadata: MeetingMetadata) -> M
                 f"Punto descartado por negacion o falta de aprobacion explicita: {item.description}"
             )
             continue
+        if _is_low_value_information(item):
+            warnings.append(f"Punto informativo genérico descartado: {item.description}")
+            continue
+        if _is_narrative_commitment(item):
+            item.category = "informativo"
+            item.responsible = None
+            warnings.append(
+                "Punto reclasificado como informativo: no contiene una acción futura asignada."
+            )
         item.responsible = _resolve_responsible(item.responsible, metadata)
         duplicate: MeetingItem | None = None
         for existing in items:

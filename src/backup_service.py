@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from src.repositories.base import MeetingRepository
-from src.runtime_paths import backups_dir, config_path, database_path, templates_dir
+from src.runtime_paths import backups_dir, config_path, database_path, references_dir, templates_dir
 
 
 class BackupError(RuntimeError):
@@ -61,6 +61,7 @@ def create_backup(
         data_dir = root / "data"
         config_dir = root / "config"
         template_copy = root / "templates"
+        reference_copy = root / "references"
         data_dir.mkdir()
         config_dir.mkdir()
 
@@ -69,6 +70,8 @@ def create_backup(
             shutil.copy2(config_path(), config_dir / "config.json")
         if templates_dir().is_dir():
             shutil.copytree(templates_dir(), template_copy, dirs_exist_ok=True)
+        if references_dir().is_dir():
+            shutil.copytree(references_dir(), reference_copy, dirs_exist_ok=True)
 
         files = [path for path in root.rglob("*") if path.is_file()]
         manifest = {
@@ -136,6 +139,7 @@ def restore_backup(path: str | Path) -> dict:
         database_path().parent.mkdir(parents=True, exist_ok=True)
         config_path().parent.mkdir(parents=True, exist_ok=True)
         templates_dir().mkdir(parents=True, exist_ok=True)
+        references_dir().mkdir(parents=True, exist_ok=True)
 
         db_source = root / "data" / "minutas.db"
         db_target = database_path()
@@ -157,6 +161,9 @@ def restore_backup(path: str | Path) -> dict:
         template_source = root / "templates"
         if template_source.is_dir():
             shutil.copytree(template_source, templates_dir(), dirs_exist_ok=True)
+        reference_source = root / "references"
+        if reference_source.is_dir():
+            shutil.copytree(reference_source, references_dir(), dirs_exist_ok=True)
     return manifest
 
 

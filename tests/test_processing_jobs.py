@@ -99,6 +99,25 @@ def test_discard_recoverable_only_removes_queued_or_interrupted_jobs(tmp_path) -
     assert store.get(running.job_id) is not None
 
 
+def test_discard_incomplete_removes_failed_and_cancelled_but_not_completed_or_running(
+    tmp_path,
+) -> None:
+    store = ProcessingJobStore(tmp_path)
+    failed = store.create("failed.vtt", "ollama_local", "qwen")
+    cancelled = store.create("cancelled.vtt", "ollama_local", "qwen")
+    completed = store.create("completed.vtt", "ollama_local", "qwen")
+    running = store.create("running.vtt", "ollama_local", "qwen")
+    store.update(failed.job_id, status="failed")
+    store.update(cancelled.job_id, status="cancelled")
+    store.update(completed.job_id, status="completed")
+    store.update(running.job_id, status="running")
+
+    assert store.discard_incomplete(failed.job_id)
+    assert store.discard_incomplete(cancelled.job_id)
+    assert not store.discard_incomplete(completed.job_id)
+    assert not store.discard_incomplete(running.job_id)
+
+
 def test_only_finished_or_interrupted_jobs_are_retryable() -> None:
     assert is_retryable_status("failed")
     assert is_retryable_status("cancelled")

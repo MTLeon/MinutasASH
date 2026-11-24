@@ -70,7 +70,7 @@ Los siguientes campos están disponibles para soporte y desarrollo. No se recomi
 | `processing_checkpoint_retention_days` | retención de procesos pausados |
 | `processing_keep_completed_checkpoint` | conserva checkpoints exitosos para diagnóstico |
 | `processing_force_chunking` | impide procesamiento de una sola etapa |
-| `remote_parallel_requests` | solicitudes remotas simultáneas; valor recomendado `2`, máximo `4` |
+| `remote_parallel_requests` | solicitudes remotas simultáneas; valor recomendado `6`, máximo `8` |
 | `remote_rate_limit_retries` | reintentos ante límites HTTP 429; valor recomendado `3` |
 | `remote_retry_max_seconds` | espera máxima por reintento remoto; valor recomendado `120` segundos |
 | `memory_warning_percent` | umbral de advertencia de RAM |

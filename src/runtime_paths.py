@@ -130,6 +130,11 @@ def templates_dir() -> Path:
     return user_data_root() / "templates"
 
 
+def references_dir() -> Path:
+    """Biblioteca local de formatos, agendas y material de consulta."""
+    return user_data_root() / "references"
+
+
 def backups_dir() -> Path:
     return user_data_root() / "backups"
 
@@ -169,6 +174,7 @@ def ensure_user_directories() -> None:
         managed_models_dir(),
         downloads_dir(),
         templates_dir(),
+        references_dir(),
         backups_dir(),
         exports_dir(),
         support_dir(),

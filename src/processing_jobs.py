@@ -153,16 +153,22 @@ class ProcessingJobStore:
                 recovered += 1
         return recovered
 
-    def discard_recoverable(self, job_id: str) -> bool:
-        """Elimina un trabajo que nunca comenzó o quedó interrumpido.
+    def discard_incomplete(self, job_id: str) -> bool:
+        """Elimina un registro no completado, sin afectar la fuente original.
 
-        Nunca elimina procesos activos ni registros finalizados: esos estados se
-        administran con la limpieza de historial para evitar perder evidencia.
+        Los procesos en ejecución y las ejecuciones completadas permanecen fuera de
+        esta acción. La interfaz usa este método junto con el almacén de checkpoints
+        para descartar explícitamente recuperaciones que el usuario ya no necesita.
         """
 
         with self._lock:
             current = self.get(job_id)
-            if current is None or current.status not in {"queued", "interrupted"}:
+            if current is None or current.status not in {
+                "queued",
+                "interrupted",
+                "failed",
+                "cancelled",
+            }:
                 return False
             path = self.root / f"{job_id}.json"
             try:
@@ -170,6 +176,15 @@ class ProcessingJobStore:
             except (FileNotFoundError, OSError):
                 return False
             return True
+
+    def discard_recoverable(self, job_id: str) -> bool:
+        """Compatibilidad con la acción histórica de retirar pendientes."""
+
+        with self._lock:
+            current = self.get(job_id)
+            if current is None or current.status not in {"queued", "interrupted"}:
+                return False
+        return self.discard_incomplete(job_id)
 
     def prune_finalized(self, *, keep: int = 100, max_age_days: int = 30) -> int:
         """Elimina solo trabajos finalizados que ya excedieron la retención.

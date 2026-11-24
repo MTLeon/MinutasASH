@@ -26,6 +26,17 @@ class ProcessingRuntime232Tests(unittest.TestCase):
         self.assertIsNotNone(plan.memory_warning)
         self.assertIn("crítico", plan.reason)
 
+    def test_auto_profile_uses_fast_before_memory_pressure_causes_paging(self) -> None:
+        snapshot = ResourceSnapshot(
+            total_memory_bytes=16 * 1024**3,
+            available_memory_bytes=2 * 1024**3,
+            memory_percent=88.0,
+            captured_at=0.0,
+        )
+        plan = resolve_processing_plan({}, 38_000, snapshot=snapshot)
+        self.assertEqual(plan.effective_profile.profile_id, "fast")
+        self.assertEqual(plan.effective_profile.chunk_chars, 4200)
+
     def test_auto_profile_chunks_very_long_meetings(self) -> None:
         snapshot = ResourceSnapshot(
             total_memory_bytes=32 * 1024**3,
@@ -69,6 +80,15 @@ class ProcessingRuntime232Tests(unittest.TestCase):
         self.assertTrue(all(chunk.strip() for chunk in chunks))
         for line in lines:
             self.assertTrue(any(line in chunk for chunk in chunks))
+
+    def test_split_text_chunk_splits_giant_line_without_repeating_content(self) -> None:
+        text = "x" * 12_000
+        chunks = split_text_chunk(text, 5_200, overlap_lines=2)
+
+        self.assertGreater(len(chunks), 1)
+        self.assertTrue(all(len(chunk) <= 5_200 for chunk in chunks))
+        self.assertTrue(all(len(chunk) < len(text) for chunk in chunks))
+        self.assertEqual("".join(chunks), text)
 
     def test_eight_hour_transcript_is_partitioned_without_losing_lines(self) -> None:
         lines = []

@@ -31,6 +31,7 @@ class FakeProvider:
         self.fail_marker = fail_marker
         self.consolidation_timeout = consolidation_timeout
         self.chunk_calls: list[str] = []
+        self.consolidation_calls = 0
         self.request_operations: list[dict] = []
         self.telemetry = lambda _event: None
         self.cancelled = lambda: False
@@ -65,6 +66,7 @@ class FakeProvider:
                 ],
             )
         if response_model is MinuteAnalysis:
+            self.consolidation_calls += 1
             if self.consolidation_timeout:
                 raise LocalEngineTimeout("consolidación lenta")
             return MinuteAnalysis(
@@ -245,6 +247,36 @@ class ResilientPipeline232Tests(unittest.TestCase):
             self.assertTrue(any(event.get("type") == "chunk_split" for event in events))
             self.assertFalse(any(checkpoint_root.glob("*.json")))
 
+    def test_timeout_split_children_are_strictly_smaller_than_parent(self) -> None:
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "meeting.txt"
+            parent = "[00:00:01] Persona: " + "x" * 12_000
+            source.write_text(parent, encoding="utf-8")
+            config = {
+                "processing_profile": "fast",
+                "processing_checkpoint_enabled": False,
+                "processing_min_chunk_chars": 1000,
+                "processing_split_on_timeout": True,
+                "processing_max_chunk_retries": 0,
+                "adaptive_timeout_min_seconds": 60,
+                "adaptive_timeout_max_seconds": 600,
+            }
+            provider = FakeProvider(timeout_above=7_000)
+            analyze_resilient_chunks(
+                provider,
+                [parent],
+                {"meeting_date": "2026-07-31", "meeting_type": "interna"},
+                config,
+                _healthy_plan(config, len(parent)),
+                source,
+                "ollama_local",
+                provider.model,
+            )
+
+            self.assertGreater(len(provider.chunk_calls), 1)
+            self.assertTrue(all(len(chunk) < len(parent) for chunk in provider.chunk_calls[1:]))
+
     def test_completed_blocks_are_reused_after_failure(self) -> None:
         with TemporaryDirectory() as temp:
             root = Path(temp)
@@ -389,6 +421,97 @@ class ResilientPipeline232Tests(unittest.TestCase):
             self.assertEqual(len(result.analysis.items), 3)
             self.assertGreater(result.deterministic_consolidations, 0)
             self.assertTrue(any("determinista" in warning for warning in result.analysis.warnings))
+
+    def test_fast_local_profile_merges_without_extra_model_calls(self) -> None:
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "meeting.txt"
+            source.write_text("a\nb\nc", encoding="utf-8")
+            config = {
+                "processing_profile": "fast",
+                "processing_checkpoint_enabled": False,
+                "processing_fast_local_merge": True,
+                "adaptive_timeout_min_seconds": 60,
+                "adaptive_timeout_max_seconds": 600,
+            }
+            provider = FakeProvider()
+            result = analyze_resilient_chunks(
+                provider,
+                ["[00:00:01] A: a", "[00:00:02] B: b", "[00:00:03] C: c"],
+                {"meeting_date": "2026-07-31", "meeting_type": "cartera"},
+                config,
+                _healthy_plan(config),
+                source,
+                "ollama_local",
+                provider.model,
+            )
+            self.assertEqual(provider.consolidation_calls, 0)
+            self.assertEqual(result.deterministic_consolidations, 1)
+            self.assertEqual(len(result.analysis.items), 3)
+            self.assertTrue(any("determinista" in warning for warning in result.analysis.warnings))
+
+    def test_balanced_local_profile_merges_without_extra_model_calls(self) -> None:
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "meeting.txt"
+            source.write_text("a\nb\nc", encoding="utf-8")
+            config = {
+                "processing_profile": "balanced",
+                "processing_checkpoint_enabled": False,
+                "processing_fast_local_merge": True,
+                "adaptive_timeout_min_seconds": 60,
+                "adaptive_timeout_max_seconds": 600,
+            }
+            provider = FakeProvider()
+            result = analyze_resilient_chunks(
+                provider,
+                ["[00:00:01] A: a", "[00:00:02] B: b", "[00:00:03] C: c"],
+                {"meeting_date": "2026-07-31", "meeting_type": "cartera"},
+                config,
+                _healthy_plan(config),
+                source,
+                "ollama_local",
+                provider.model,
+            )
+            self.assertEqual(provider.consolidation_calls, 0)
+            self.assertEqual(result.deterministic_consolidations, 1)
+
+    def test_cancellation_during_consolidation_marks_checkpoint_paused(self) -> None:
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "meeting.txt"
+            source.write_text("a\nb\nc", encoding="utf-8")
+            config = {
+                "processing_profile": "precise",
+                "processing_checkpoint_enabled": True,
+                "adaptive_timeout_min_seconds": 60,
+                "adaptive_timeout_max_seconds": 600,
+            }
+            provider = FakeProvider()
+            with (
+                patch(
+                    "src.resilient_pipeline.ProcessingCheckpointStore",
+                    lambda: ProcessingCheckpointStore(root / "checkpoints"),
+                ),
+                self.assertRaises(InterruptedError),
+            ):
+                analyze_resilient_chunks(
+                    provider,
+                    ["[00:00:01] A: a", "[00:00:02] B: b"],
+                    {"meeting_date": "2026-07-31", "meeting_type": "cartera"},
+                    config,
+                    _healthy_plan(config),
+                    source,
+                    "ollama_local",
+                    provider.model,
+                    cancelled=lambda: len(provider.chunk_calls) >= 2,
+                )
+            checkpoints = list((root / "checkpoints").glob("*.json"))
+            self.assertEqual(len(checkpoints), 1)
+            checkpoint = ProcessingCheckpointStore(root / "checkpoints").load(checkpoints[0].stem)
+            self.assertIsNotNone(checkpoint)
+            self.assertEqual(checkpoint.status, "paused")
+            self.assertEqual(checkpoint.completed_count, 2)
 
     def test_many_blocks_complete_through_hierarchical_pipeline(self) -> None:
         with TemporaryDirectory() as temp:

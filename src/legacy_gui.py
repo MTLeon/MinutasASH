@@ -36,7 +36,7 @@ from src.ollama_manager import (
     start_ollama,
 )
 from src.preferences import PreferencesDialog
-from src.processing_jobs import JobStatus, ProcessingJobStore
+from src.processing_jobs import ProcessingJobStore
 from src.providers.registry import (
     configured_model,
     create_processing_provider,
@@ -1407,6 +1407,8 @@ class MinutasApp(tk.Tk):
                     telemetry=lambda event: self.worker_queue.put(("telemetry", event)),
                     cancelled=lambda: self.cancel_requested,
                 )
+            if self.cancel_requested:
+                raise InterruptedError("Proceso cancelado por el usuario.")
             try:
                 job_store.update(
                     job_id,
@@ -1419,14 +1421,27 @@ class MinutasApp(tk.Tk):
                     "No se pudo cerrar el trabajo %s como completado: %s", job_id, exc
                 )
             self.worker_queue.put(("analysis_success", bundle))
-        except Exception as exc:
-            status: JobStatus = "cancelled" if isinstance(exc, InterruptedError) else "failed"
+        except InterruptedError as exc:
             try:
                 job_store.update(
                     job_id,
-                    status=status,
+                    status="cancelled",
+                    message="Proceso cancelado; el avance recuperable quedó guardado.",
+                )
+            except (KeyError, OSError, TypeError, ValueError) as persistence_error:
+                self.logger.warning(
+                    "No se pudo guardar la cancelación del trabajo %s: %s",
+                    job_id,
+                    persistence_error,
+                )
+            self.worker_queue.put(("analysis_cancelled", str(exc)))
+        except Exception as exc:
+            try:
+                job_store.update(
+                    job_id,
+                    status="failed",
                     message=str(exc),
-                    error=str(exc) if status == "failed" else "",
+                    error=str(exc),
                 )
             except (KeyError, OSError, TypeError, ValueError) as persistence_error:
                 self.logger.warning(
@@ -1450,6 +1465,8 @@ class MinutasApp(tk.Tk):
                     self._apply_processing_telemetry(cast(dict[str, object], payload))
                 elif kind == "analysis_success":
                     self._analysis_complete(cast(AnalysisBundle, payload))
+                elif kind == "analysis_cancelled":
+                    self._handle_analysis_cancelled(str(payload))
                 elif kind == "provider_status" or kind == "ollama_status":
                     self._apply_provider_status(
                         cast(tuple[bool, str, list[str], Exception | None], payload)
@@ -1691,6 +1708,14 @@ class MinutasApp(tk.Tk):
                 exc_info=(type(exc), exc, exc.__traceback__),
             )
         messagebox.showerror("No fue posible completar el proceso", str(exc), parent=self)
+
+    def _handle_analysis_cancelled(self, detail: str) -> None:
+        self._set_busy(False)
+        self.progress_text_var.set("Proceso cancelado")
+        self.processing_metrics_var.set(
+            "El avance completado quedó guardado para continuar después."
+        )
+        self._log(detail)
 
     def _set_busy(self, value: bool) -> None:
         self.busy = value

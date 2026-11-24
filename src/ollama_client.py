@@ -17,6 +17,19 @@ TelemetryCallback = Callable[[dict[str, Any]], None]
 CancelCallback = Callable[[], bool]
 
 
+def _tokens_per_second(count: Any, duration_nanoseconds: Any) -> float | None:
+    """Convierte las métricas nativas de Ollama en throughput comparable."""
+
+    try:
+        tokens = float(count)
+        seconds = float(duration_nanoseconds) / 1_000_000_000
+    except (TypeError, ValueError):
+        return None
+    if tokens < 0 or seconds <= 0:
+        return None
+    return round(tokens / seconds, 2)
+
+
 class LocalEngineError(RuntimeError):
     """Error del motor local de procesamiento."""
 
@@ -35,7 +48,7 @@ class StructuredOutputTruncated(StructuredOutputError):
 
 def _validation_indicates_truncation(
     content: str,
-    error: ValidationError,
+    error: ValidationError | json.JSONDecodeError,
     metrics: dict[str, Any],
 ) -> bool:
     """Detecta respuestas JSON cortadas sin confundirlas con errores de campos."""
@@ -43,6 +56,9 @@ def _validation_indicates_truncation(
     done_reason = str(metrics.get("done_reason") or "").casefold()
     if done_reason in {"length", "max_tokens", "token_limit"}:
         return True
+
+    if isinstance(error, json.JSONDecodeError):
+        return error.pos >= max(0, len(content) - 16) or "unterminated" in error.msg.casefold()
 
     messages = " ".join(
         f"{item.get('type', '')} {item.get('msg', '')}" for item in error.errors()
@@ -321,6 +337,13 @@ class OllamaClient:
                 "request_finished",
                 elapsed_seconds=monotonic() - started,
                 generated_chars=len(content),
+                generation_tokens_per_second=_tokens_per_second(
+                    final_metrics.get("eval_count"), final_metrics.get("eval_duration")
+                ),
+                prompt_tokens_per_second=_tokens_per_second(
+                    final_metrics.get("prompt_eval_count"),
+                    final_metrics.get("prompt_eval_duration"),
+                ),
                 **final_metrics,
             )
             return content, final_metrics
@@ -383,7 +406,7 @@ class OllamaClient:
             {"role": "user", "content": user_prompt},
         ]
         messages = list(base_messages)
-        last_validation_error: ValidationError | None = None
+        last_validation_error: ValidationError | json.JSONDecodeError | None = None
         last_content = ""
         last_was_truncated = False
         base_limit = self._output_limit()
@@ -416,13 +439,13 @@ class OllamaClient:
 
             try:
                 return validate_model_json(last_content, response_model)
-            except ValidationError as exc:
+            except (ValidationError, json.JSONDecodeError) as exc:
                 last_validation_error = exc
                 last_was_truncated = _validation_indicates_truncation(last_content, exc, metrics)
                 self._emit(
                     "schema_validation_failed",
                     attempt=attempt + 1,
-                    error_count=len(exc.errors()),
+                    error_count=len(exc.errors()) if isinstance(exc, ValidationError) else 1,
                     truncated=last_was_truncated,
                     output_token_limit=output_limit,
                 )

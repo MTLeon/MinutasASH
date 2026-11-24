@@ -93,6 +93,20 @@ def test_excluded_sample_is_not_retrieved(tmp_path: Path):
     assert row["excluded_reason"] == "Ejemplo incorrecto"
 
 
+def test_retrieval_without_client_never_crosses_learning_scopes(tmp_path: Path):
+    db = AppDatabase(tmp_path / "learning.db")
+    save_example(
+        db,
+        tmp_path,
+        client="Cliente Norte",
+        project="P1",
+        matter="costos",
+        description="Ana enviará costos",
+    )
+
+    assert db.list_learning_examples(project_code="P1", query_text="costos") == []
+
+
 def test_export_separates_clients_and_writes_manifest(tmp_path: Path):
     db = AppDatabase(tmp_path / "learning.db")
     save_example(

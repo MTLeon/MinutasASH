@@ -14,7 +14,12 @@ from typing import Any
 
 from src.minute_generator import analyze_chunks, consolidate_minute
 from src.models import ChunkAnalysis, MeetingItem, MinuteAnalysis
-from src.ollama_client import LocalEngineError, LocalEngineTimeout, StructuredOutputTruncated
+from src.ollama_client import (
+    LocalEngineError,
+    LocalEngineTimeout,
+    StructuredOutputError,
+    StructuredOutputTruncated,
+)
 from src.processing_checkpoint import (
     ProcessingCheckpoint,
     ProcessingCheckpointStore,
@@ -271,7 +276,10 @@ def _prime_remote_chunks(
         for index, item in enumerate(checkpoint.work_items, start=1)
         if str(item["id"]) not in checkpoint.completed
     ]
-    requested = max(1, min(int(config.get("remote_parallel_requests", 2)), 4))
+    # Los proveedores modernos aceptan varias solicitudes independientes. El
+    # límite se mantiene acotado para no saturar la API ni el equipo, pero seis
+    # bloques reduce de forma importante la latencia de reuniones extensas.
+    requested = max(1, min(int(config.get("remote_parallel_requests", 6)), 8))
     workers = min(requested, len(pending))
     if client_factory is None or workers < 2:
         return 0, 1
@@ -560,10 +568,16 @@ def _process_chunks(
                     "No fue posible completar uno de los bloques mínimos. "
                     "El avance quedó guardado; cierre aplicaciones exigentes o use el perfil Rápido y continúe."
                 ) from timeout_error
-            except StructuredOutputTruncated as exc:
+            except StructuredOutputError as exc:
                 duration = monotonic() - started
                 checkpoint.retries[chunk_id] = attempt + 1
                 retry_total += 1
+                reason = (
+                    "structured_output_truncated"
+                    if isinstance(exc, StructuredOutputTruncated)
+                    else "structured_output_invalid"
+                )
+                issue = "incompleta" if isinstance(exc, StructuredOutputTruncated) else "inválida"
                 can_split = (
                     bool(config.get("processing_split_on_structure_error", True))
                     and len(text) > profile.min_chunk_chars * 1.20
@@ -591,7 +605,7 @@ def _process_chunks(
                         checkpoint.status = "in_progress"
                         store.save(checkpoint)
                         log(
-                            f"La respuesta del bloque {chunk_id} quedó incompleta y "
+                            f"La respuesta del bloque {chunk_id} quedó {issue} y "
                             f"se dividió automáticamente en {len(children)} partes. "
                             "Los bloques anteriores permanecen guardados."
                         )
@@ -602,13 +616,13 @@ def _process_chunks(
                             child_count=len(children),
                             duration_seconds=duration,
                             total_blocks=len(checkpoint.work_items),
-                            reason="structured_output_truncated",
+                            reason=reason,
                         )
                         continue
                 if attempt < profile.max_retries:
                     store.save(checkpoint)
                     log(
-                        f"El bloque {chunk_id} devolvió un JSON incompleto y se "
+                        f"El bloque {chunk_id} devolvió un JSON {issue} y se "
                         f"reintentará ({attempt + 1}/{profile.max_retries})."
                     )
                     _emit(
@@ -617,14 +631,14 @@ def _process_chunks(
                         block_id=chunk_id,
                         attempt=attempt + 1,
                         duration_seconds=duration,
-                        reason="structured_output_truncated",
+                        reason=reason,
                     )
                     continue
                 checkpoint.status = "error"
                 store.save(checkpoint)
                 raise LocalEngineError(
                     "Uno de los bloques mínimos siguió produciendo una respuesta "
-                    "incompleta. El avance quedó guardado para continuar después."
+                    f"{issue}. El avance quedó guardado para continuar después."
                 ) from exc
             except InterruptedError:
                 checkpoint.status = "paused"
@@ -701,6 +715,33 @@ def _hierarchical_consolidation(
     level = 0
     if not current:
         return MinuteAnalysis(), deterministic, level
+
+    # En un equipo con recursos limitados, volver a enviar todos los resultados
+    # parciales al modelo puede tardar más que el análisis original y aumentar el
+    # riesgo de una salida JSON truncada. La normalización posterior elimina los
+    # duplicados, por lo que una unión local conserva cada hallazgo sin esa espera.
+    fast_local_merge = (
+        profile.profile_id != "precise"
+        and not bool(getattr(client, "is_remote", False))
+        and bool(config.get("processing_fast_local_merge", True))
+    )
+    if len(current) > 1 and fast_local_merge:
+        level = 1
+        deterministic = 1
+        progress(82, f"Uniendo localmente {len(current)} bloque(s) analizados")
+        log(
+            "Perfil local: los bloques se unirán localmente para conservar cada "
+            "hallazgo sin nuevas llamadas al motor."
+        )
+        _emit(
+            telemetry,
+            "deterministic_consolidation",
+            consolidation_level=level,
+            group_index=1,
+            reason="fast_local_merge",
+            source_blocks=len(current),
+        )
+        return _deterministic_merge(current), deterministic, level
 
     while len(current) > 1:
         if cancelled():
@@ -878,18 +919,26 @@ def analyze_resilient_chunks(
         telemetry=telemetry,
         cancelled=cancelled,
     )
-    analysis, deterministic, levels = _hierarchical_consolidation(
-        client,
-        chunk_analyses,
-        metadata,
-        config,
-        plan,
-        knowledge_context,
-        log=log,
-        progress=progress,
-        telemetry=telemetry,
-        cancelled=cancelled,
-    )
+    try:
+        analysis, deterministic, levels = _hierarchical_consolidation(
+            client,
+            chunk_analyses,
+            metadata,
+            config,
+            plan,
+            knowledge_context,
+            log=log,
+            progress=progress,
+            telemetry=telemetry,
+            cancelled=cancelled,
+        )
+    except InterruptedError:
+        # Los bloques terminados se guardan antes de consolidar. Marcar la
+        # pausa aquí hace visible que son reanudables incluso si se cancela en
+        # una consolidación larga.
+        checkpoint.status = "paused"
+        store.save(checkpoint)
+        raise
 
     checkpoint.status = "completed"
     checkpoint.consolidation_levels.append(

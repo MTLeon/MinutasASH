@@ -68,7 +68,7 @@ class AudioTranscriptionTests(unittest.TestCase):
             self.assertFalse(result.source_deleted)
 
     @patch("src.audio_transcription.subprocess.run")
-    def test_deletes_source_only_after_a_verified_copy(self, run: Mock):
+    def test_preserves_source_even_when_legacy_deletion_is_requested(self, run: Mock):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             source = root / "reunion.ogg"
@@ -85,8 +85,8 @@ class AudioTranscriptionTests(unittest.TestCase):
                 source, output_format="mp3", delete_source=True, ffmpeg_path=ffmpeg
             )
 
-            self.assertTrue(result.source_deleted)
-            self.assertFalse(source.exists())
+            self.assertFalse(result.source_deleted)
+            self.assertTrue(source.exists())
             self.assertEqual(result.output_path.suffix, ".mp3")
 
     @patch("src.audio_transcription.subprocess.run")

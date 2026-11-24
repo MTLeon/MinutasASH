@@ -10,6 +10,26 @@ from pydantic import ValidationError
 from src.models import MeetingItem, MinuteAnalysis
 
 _ACTIONABLE_CATEGORIES = {"compromiso", "pendiente"}
+_STOPWORDS = frozenset(
+    {
+        "a",
+        "al",
+        "con",
+        "de",
+        "del",
+        "el",
+        "en",
+        "la",
+        "las",
+        "los",
+        "para",
+        "por",
+        "se",
+        "un",
+        "una",
+        "y",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -40,12 +60,38 @@ class MinuteComparison:
     changed: tuple[ItemChange, ...]
 
 
+@dataclass(frozen=True)
+class ContinuityMatch:
+    """Coincidencia local que requiere confirmar continuidad o duplicación."""
+
+    current_index: int
+    previous_meeting_id: int
+    previous_meeting_date: str
+    similarity: float
+
+
 def _normalized(value: str | None) -> str:
     return " ".join((value or "").casefold().split())
 
 
 def _item_key(item: MeetingItem) -> str:
     return _normalized(item.description)
+
+
+def _tokens(value: str | None) -> set[str]:
+    return {
+        token
+        for token in _normalized(value).replace("-", " ").split()
+        if len(token) >= 3 and token not in _STOPWORDS
+    }
+
+
+def _similarity(left: str | None, right: str | None) -> float:
+    left_tokens = _tokens(left)
+    right_tokens = _tokens(right)
+    if not left_tokens or not right_tokens:
+        return 0.0
+    return len(left_tokens & right_tokens) / min(len(left_tokens), len(right_tokens))
 
 
 def _approved_actionable_items(row: Mapping[str, object]) -> list[MeetingItem]:
@@ -108,6 +154,56 @@ def prior_actionable_items(
             if len(suggestions) >= safe_limit:
                 return tuple(suggestions)
     return tuple(suggestions)
+
+
+def flag_repeated_actionable_items(
+    current_items: list[MeetingItem],
+    rows: Iterable[Mapping[str, object]],
+    *,
+    project_code: str | None,
+    minimum_similarity: float = 0.82,
+) -> tuple[ContinuityMatch, ...]:
+    """Marca posibles repeticiones sin descartar ni alterar el contenido.
+
+    Una acción puede reaparecer porque se actualizó, continúa pendiente o se
+    duplicó por error. Por eso sólo se agrega una nota y la revisión por
+    excepciones decide que requiere confirmación humana.
+    """
+
+    project = _normalized(project_code)
+    if not project:
+        return ()
+    threshold = max(0.70, min(float(minimum_similarity), 1.0))
+    prior = prior_actionable_items(rows, project_code=project, limit=100)
+    matches: list[ContinuityMatch] = []
+    for index, current in enumerate(current_items):
+        if current.category not in _ACTIONABLE_CATEGORIES:
+            continue
+        best: PriorItemSuggestion | None = None
+        best_similarity = 0.0
+        for suggestion in prior:
+            similarity = _similarity(current.description, suggestion.item.description)
+            if similarity > best_similarity:
+                best = suggestion
+                best_similarity = similarity
+        if best is None or best_similarity < threshold:
+            continue
+        note = (
+            f"Continuidad: coincide con la minuta {best.minute_number or best.meeting_id} "
+            f"del {best.meeting_date or 'proyecto'}; confirme si se actualiza o se repite."
+        )
+        if note not in (current.review_notes or ""):
+            current.review_notes = f"{current.review_notes} {note}".strip()
+        current.review_status = "pendiente"
+        matches.append(
+            ContinuityMatch(
+                current_index=index,
+                previous_meeting_id=best.meeting_id,
+                previous_meeting_date=best.meeting_date,
+                similarity=best_similarity,
+            )
+        )
+    return tuple(matches)
 
 
 def compare_minute_analyses(previous: MinuteAnalysis, current: MinuteAnalysis) -> MinuteComparison:
