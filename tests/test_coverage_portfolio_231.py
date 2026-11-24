@@ -43,10 +43,10 @@ class PortfolioCoverage231Tests(unittest.TestCase):
         self.assertEqual(pending.project_code, "3261")
         self.assertIn("espera", pending.text.casefold())
 
-    def test_conditional_fallback_preserves_action(self):
+    def test_conditional_fallback_preserves_action_for_review(self):
         candidates = extract_action_candidates(self._segments())
         fallback = next(item for item in candidates if "generar el TOP" in item.text)
-        self.assertEqual(fallback.category_hint, "compromiso")
+        self.assertEqual(fallback.category_hint, "pendiente")
         self.assertEqual(fallback.project_code, "3261")
 
     def test_project_context_changes_when_a_new_code_is_introduced(self):

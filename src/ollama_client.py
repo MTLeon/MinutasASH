@@ -17,6 +17,19 @@ TelemetryCallback = Callable[[dict[str, Any]], None]
 CancelCallback = Callable[[], bool]
 
 
+def _tokens_per_second(count: Any, duration_nanoseconds: Any) -> float | None:
+    """Convierte las métricas nativas de Ollama en throughput comparable."""
+
+    try:
+        tokens = float(count)
+        seconds = float(duration_nanoseconds) / 1_000_000_000
+    except (TypeError, ValueError):
+        return None
+    if tokens < 0 or seconds <= 0:
+        return None
+    return round(tokens / seconds, 2)
+
+
 class LocalEngineError(RuntimeError):
     """Error del motor local de procesamiento."""
 
@@ -324,6 +337,13 @@ class OllamaClient:
                 "request_finished",
                 elapsed_seconds=monotonic() - started,
                 generated_chars=len(content),
+                generation_tokens_per_second=_tokens_per_second(
+                    final_metrics.get("eval_count"), final_metrics.get("eval_duration")
+                ),
+                prompt_tokens_per_second=_tokens_per_second(
+                    final_metrics.get("prompt_eval_count"),
+                    final_metrics.get("prompt_eval_duration"),
+                ),
                 **final_metrics,
             )
             return content, final_metrics

@@ -51,3 +51,55 @@ def test_select_document_format_prefers_project_and_tolerates_client_legal_suffi
     selected = select_document_format(references, "3165", "Anglo American Sur S.A.")
     assert selected is not None
     assert selected["id"] == 2
+
+
+def test_select_document_format_never_uses_another_project_format() -> None:
+    references = [
+        {
+            "id": 1,
+            "reference_type": "format",
+            "project_code": "3166",
+            "client": "Anglo American Sur",
+            "file_path": "3166.docx",
+        },
+        {
+            "id": 2,
+            "reference_type": "format",
+            "project_code": None,
+            "client": "Anglo American Sur",
+            "file_path": "global.docx",
+        },
+    ]
+
+    selected = select_document_format(references, "3165", "Anglo American Sur")
+
+    assert selected is not None
+    assert selected["id"] == 2
+
+
+def test_select_document_format_normalizes_project_code_and_rejects_cross_project_fallback() -> (
+    None
+):
+    references = [
+        {
+            "id": 1,
+            "reference_type": "format",
+            "project_code": "  p3165 ",
+            "client": "Cliente Norte",
+            "file_path": "p3165.docx",
+        },
+        {
+            "id": 2,
+            "reference_type": "format",
+            "project_code": "P3166",
+            "client": "Cliente Norte",
+            "file_path": "p3166.docx",
+        },
+    ]
+
+    exact = select_document_format(references, "p3165", "Cliente Norte")
+    missing = select_document_format(references, "P3167", "Cliente Norte")
+
+    assert exact is not None
+    assert exact["id"] == 1
+    assert missing is None

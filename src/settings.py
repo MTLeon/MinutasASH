@@ -39,8 +39,8 @@ class AppSettings(BaseModel):
     processing_profile: Literal["auto", "fast", "balanced", "precise"] = "auto"
     adaptive_chunking_enabled: bool = True
     adaptive_timeout_enabled: bool = True
-    adaptive_timeout_min_seconds: int = Field(default=600, ge=60, le=14400)
-    adaptive_timeout_max_seconds: int = Field(default=7200, ge=300, le=14400)
+    adaptive_timeout_min_seconds: int = Field(default=180, ge=60, le=14400)
+    adaptive_timeout_max_seconds: int = Field(default=1800, ge=300, le=14400)
     processing_max_chunk_retries: int = Field(default=3, ge=0, le=8)
     processing_split_on_timeout: bool = True
     processing_split_on_structure_error: bool = True

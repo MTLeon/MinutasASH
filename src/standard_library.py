@@ -35,6 +35,11 @@ def select_document_format(
             continue
         if not str(reference.get("file_path") or "").lower().endswith(".docx"):
             continue
+        reference_project = str(reference.get("project_code") or "").strip().upper()
+        # Los formatos con alcance de proyecto nunca pueden filtrarse a otro
+        # proyecto. El único fallback permitido es una referencia global.
+        if reference_project and reference_project != project:
+            continue
         reference_client = _scope_tokens(reference.get("client"))
         if reference_client and not reference_client.issubset(client_tokens):
             continue
@@ -43,7 +48,7 @@ def select_document_format(
         return None
     candidates.sort(
         key=lambda item: (
-            str(item.get("project_code") or "").upper() != project,
+            str(item.get("project_code") or "").strip().upper() != project,
             not bool(item.get("client")),
             -int(item.get("id") or 0),
         )

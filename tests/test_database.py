@@ -19,6 +19,7 @@ class DatabaseTests(unittest.TestCase):
                 minute_number="P3261-MRE-PR-00",
                 meeting_date="2026-07-30",
                 project_code="P3261",
+                client="Cliente de Prueba",
             )
             analysis = MinuteAnalysis(executive_summary="Prueba")
             meeting_id = db.save_meeting(
@@ -37,7 +38,9 @@ class DatabaseTests(unittest.TestCase):
             self.assertEqual(row["processing_provider"], "ollama_local")
 
             db.register_learning_sample(meeting_id, approved=True)
-            examples = db.list_learning_examples("P3261", metadata.meeting_type, limit=3)
+            examples = db.list_learning_examples(
+                "P3261", metadata.meeting_type, limit=3, client="Cliente de Prueba"
+            )
             self.assertEqual(len(examples), 1)
             self.assertEqual(examples[0]["project_code"], "P3261")
 

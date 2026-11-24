@@ -247,6 +247,36 @@ class ResilientPipeline232Tests(unittest.TestCase):
             self.assertTrue(any(event.get("type") == "chunk_split" for event in events))
             self.assertFalse(any(checkpoint_root.glob("*.json")))
 
+    def test_timeout_split_children_are_strictly_smaller_than_parent(self) -> None:
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "meeting.txt"
+            parent = "[00:00:01] Persona: " + "x" * 12_000
+            source.write_text(parent, encoding="utf-8")
+            config = {
+                "processing_profile": "fast",
+                "processing_checkpoint_enabled": False,
+                "processing_min_chunk_chars": 1000,
+                "processing_split_on_timeout": True,
+                "processing_max_chunk_retries": 0,
+                "adaptive_timeout_min_seconds": 60,
+                "adaptive_timeout_max_seconds": 600,
+            }
+            provider = FakeProvider(timeout_above=7_000)
+            analyze_resilient_chunks(
+                provider,
+                [parent],
+                {"meeting_date": "2026-07-31", "meeting_type": "interna"},
+                config,
+                _healthy_plan(config, len(parent)),
+                source,
+                "ollama_local",
+                provider.model,
+            )
+
+            self.assertGreater(len(provider.chunk_calls), 1)
+            self.assertTrue(all(len(chunk) < len(parent) for chunk in provider.chunk_calls[1:]))
+
     def test_completed_blocks_are_reused_after_failure(self) -> None:
         with TemporaryDirectory() as temp:
             root = Path(temp)

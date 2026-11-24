@@ -1795,6 +1795,11 @@ class AppDatabase:
         project = (project_code or "").strip().upper()
         kind = (meeting_type or "").strip().casefold()
         client_key = normalize_name(client or "")
+        # El conocimiento aprobado nunca debe cruzar clientes. Si la minuta
+        # actual no declara un cliente normalizado, no existe un alcance seguro
+        # para recuperar ejemplos supervisados.
+        if not client_key:
+            return []
         query_tokens = set(normalize_name(query_text or "").split())
         with self.connect() as db:
             rows = db.execute(
@@ -1812,13 +1817,11 @@ class AppDatabase:
                 """
             ).fetchall()
         candidates = [dict(row) for row in rows]
-        if client_key:
-            candidates = [
-                row
-                for row in candidates
-                if normalize_name(str(row.get("client_scope") or row.get("client") or ""))
-                == client_key
-            ]
+        candidates = [
+            row
+            for row in candidates
+            if normalize_name(str(row.get("client_scope") or row.get("client") or "")) == client_key
+        ]
 
         def similarity(row: dict) -> float:
             if not query_tokens:

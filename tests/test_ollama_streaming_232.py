@@ -69,6 +69,7 @@ class OllamaStreaming232Tests(unittest.TestCase):
         self.assertTrue(any(event.get("type") == "stream_activity" for event in events))
         finished = [event for event in events if event.get("type") == "request_finished"]
         self.assertEqual(finished[0].get("eval_count"), 5)
+        self.assertEqual(finished[0].get("generation_tokens_per_second"), 5_000_000.0)
         self.assertEqual(finished[0].get("stage"), "unit")
 
     def test_invalid_schema_is_retried_with_a_new_stream(self) -> None:

@@ -5,6 +5,7 @@ from dataclasses import asdict, dataclass
 from html import unescape
 from pathlib import Path
 
+from src.processing_runtime import split_text_chunk
 from src.ui_productivity import unique_person_labels
 
 TIMESTAMP_RE = re.compile(
@@ -150,18 +151,33 @@ def split_transcript(
     if max_chars < 2000:
         raise ValueError("max_chars debe ser al menos 2000")
 
+    lines: list[str] = []
+    for segment in segments:
+        prefix = f"[{segment.start}] {segment.speaker}: "
+        available_chars = max(1, max_chars - len(prefix))
+        # Cada parte conserva la identidad del hablante. La división interna
+        # no usa solapamiento, por lo que el texto de una intervención gigante
+        # aparece una sola vez y siempre cabe en un bloque procesable.
+        lines.extend(
+            f"{prefix}{part}"
+            for part in split_text_chunk(
+                segment.text,
+                available_chars,
+                overlap_lines=0,
+            )
+        )
+
     chunks: list[str] = []
     current: list[str] = []
-    current_size = 0
-    for segment in segments:
-        line = f"[{segment.start}] {segment.speaker}: {segment.text}"
-        if current and current_size + len(line) + 1 > max_chars:
+    for line in lines:
+        candidate = "\n".join([*current, line])
+        if current and len(candidate) > max_chars:
             chunks.append("\n".join(current))
             overlap = current[-max(overlap_segments, 0) :] if overlap_segments else []
             current = list(overlap)
-            current_size = sum(len(item) + 1 for item in current)
+            while current and len("\n".join([*current, line])) > max_chars:
+                current.pop(0)
         current.append(line)
-        current_size += len(line) + 1
     if current:
         chunks.append("\n".join(current))
     return chunks

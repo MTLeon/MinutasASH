@@ -126,7 +126,34 @@ class CoverageGuardTests(unittest.TestCase):
         self.assertNotIn("hay que hacerlo", combined)
         self.assertNotIn("hay que hacer si o si", combined)
         self.assertNotIn("revisar en conjunto", combined)
-        self.assertIn("levantar el sistema", combined)
+        self.assertNotIn("levantar el sistema", combined)
+
+    def test_keeps_assigned_or_first_person_commitments_but_skips_impersonal_ones(self):
+        segments = [
+            TranscriptSegment(
+                start="00:12:23.000",
+                end="00:12:30.000",
+                speaker="María",
+                text=(
+                    "Hay que revisar el informe. Tenemos que coordinar con terreno. "
+                    "Se debe cerrar el tema. Deberíamos validar los planos. "
+                    "Yo tengo que enviar el informe. "
+                    "ASH debe emitir la respuesta."
+                ),
+            )
+        ]
+
+        candidates = extract_action_candidates(segments)
+        combined = " ".join(candidate.text.casefold() for candidate in candidates)
+
+        self.assertNotIn("hay que revisar", combined)
+        self.assertNotIn("tenemos que coordinar", combined)
+        self.assertNotIn("se debe cerrar", combined)
+        self.assertNotIn("deberíamos validar", combined)
+        self.assertIn("tengo que enviar", combined)
+        self.assertIn("ash debe emitir", combined)
+        self.assertTrue(all(candidate.category_hint == "compromiso" for candidate in candidates))
+        self.assertTrue(any(candidate.speaker == "María" for candidate in candidates))
 
     def test_deterministic_fallback_recovers_all_explicit_points(self):
         raw = read_teams_vtt(EXAMPLE, merge_adjacent=False)
